@@ -1,0 +1,80 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}{{ review.name }} - PAM{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-search"></i> {{ review.name }}</span>
+                <span class="badge bg-{% if review.status == 'COMPLETED' %}success{% elif review.status == 'IN_PROGRESS' %}warning{% else %}secondary{% endif %} fs-6">
+                    {{ review.get_status_display }}
+                </span>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Description</dt>
+                    <dd class="col-sm-9">{{ review.description|default:"No description"|linebreaks }}</dd>
+
+                    <dt class="col-sm-3">Due Date</dt>
+                    <dd class="col-sm-9">{{ review.due_date|date:"M d, Y" }}</dd>
+
+                    <dt class="col-sm-3">Created By</dt>
+                    <dd class="col-sm-9">{{ review.created_by.get_full_name|default:review.created_by.username }}</dd>
+
+                    <dt class="col-sm-3">Reviewers</dt>
+                    <dd class="col-sm-9">
+                        {% for reviewer in review.reviewers.all %}
+                        <span class="badge bg-info">{{ reviewer.get_full_name|default:reviewer.username }}</span>
+                        {% empty %}
+                        <span class="text-muted">None assigned</span>
+                        {% endfor %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Review Entries -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-check"></i> Entries ({{ review.entries.count }})
+            </div>
+            <div class="card-body">
+                {% if review.entries.exists %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>Request #</th>
+                                <th>Requester</th>
+                                <th>Role</th>
+                                <th>Decision</th>
+                                <th>Reviewed By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in review.entries.all %}
+                            <tr>
+                                <td><a href="{% url 'requests:detail' entry.access_request.id %}">#{{ entry.access_request.id }}</a></td>
+                                <td>{{ entry.access_request.requester.get_full_name|default:entry.access_request.requester.username }}</td>
+                                <td>{{ entry.access_request.role.name }}</td>
+                                <td>
+                                    <span class="badge bg-{% if entry.decision == 'APPROVED' %}success{% elif entry.decision == 'REVOKED' %}danger{% else %}secondary{% endif %}">
+                                        {{ entry.get_decision_display }}
+                                    </span>
+                                </td>
+                                <td>{{ entry.reviewed_by.get_full_name|default:entry.reviewed_by.username|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No entries in this review.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

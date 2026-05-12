@@ -1,0 +1,147 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Request #{{ request_obj.id }} - PAM{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-info-circle"></i> Request #{{ request_obj.id }}</span>
+                <span class="badge badge-status-{{ request_obj.status|lower }} fs-6">
+                    {{ request_obj.get_status_display }}
+                </span>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Requester</dt>
+                    <dd class="col-sm-9">{{ request_obj.requester.get_full_name|default:request_obj.requester.username }}</dd>
+
+                    <dt class="col-sm-3">Role</dt>
+                    <dd class="col-sm-9">{{ request_obj.role.name }}
+                        <span class="badge bg-secondary">{{ request_obj.role.provider }}</span>
+                    </dd>
+
+                    <dt class="col-sm-3">Justification</dt>
+                    <dd class="col-sm-9">{{ request_obj.justification|linebreaks }}</dd>
+
+                    <dt class="col-sm-3">Duration</dt>
+                    <dd class="col-sm-9">{{ request_obj.requested_duration_minutes }} minutes</dd>
+
+                    <dt class="col-sm-3">Created</dt>
+                    <dd class="col-sm-9">{{ request_obj.created_at|date:"M d, Y H:i" }}</dd>
+
+                    {% if request_obj.approved_at %}
+                    <dt class="col-sm-3">Approved At</dt>
+                    <dd class="col-sm-9">{{ request_obj.approved_at|date:"M d, Y H:i" }}</dd>
+                    {% endif %}
+
+                    {% if request_obj.expires_at %}
+                    <dt class="col-sm-3">Expires</dt>
+                    <dd class="col-sm-9">{{ request_obj.expires_at|date:"M d, Y H:i" }}
+                        ({{ request_obj.expires_at|timeuntil }})</dd>
+                    {% endif %}
+
+                    {% if request_obj.provider_reference_id %}
+                    <dt class="col-sm-3">Provider Ref</dt>
+                    <dd class="col-sm-9"><code>{{ request_obj.provider_reference_id }}</code></dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+
+        <!-- Approvals -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-check2-square"></i> Approvals
+            </div>
+            <div class="card-body">
+                {% if approvals %}
+                <div class="list-group">
+                    {% for approval in approvals %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <strong>{{ approval.approver.get_full_name|default:approval.approver.username }}</strong>
+                            <span class="badge bg-{% if approval.decision == 'APPROVED' %}success{% else %}danger{% endif %}">
+                                {{ approval.get_decision_display }}
+                            </span>
+                        </div>
+                        {% if approval.comment %}
+                        <p class="mb-0 mt-1 text-muted">{{ approval.comment }}</p>
+                        {% endif %}
+                        <small class="text-muted">{{ approval.decided_at|date:"M d, Y H:i" }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No approvals yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Actions -->
+        {% if request_obj.status == 'PENDING' and user.is_approver and user in request_obj.role.approvers.all %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-shield-check"></i> Actions
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'requests:approve' request_obj.id %}" class="mb-2">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <textarea name="comment" class="form-control" rows="2" placeholder="Approval comment (optional)"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-check-lg"></i> Approve
+                    </button>
+                </form>
+                <form method="post" action="{% url 'requests:deny' request_obj.id %}">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <textarea name="reason" class="form-control" rows="2" placeholder="Reason for denial" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="bi bi-x-lg"></i> Deny
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Timeline -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Timeline
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <small class="text-muted">{{ request_obj.created_at|date:"M d, H:i" }}</small>
+                        <br>Request created
+                    </li>
+                    {% if request_obj.approved_at %}
+                    <li class="mb-2">
+                        <small class="text-muted">{{ request_obj.approved_at|date:"M d, H:i" }}</small>
+                        <br>Request approved
+                    </li>
+                    {% endif %}
+                    {% if request_obj.provisioned_at %}
+                    <li class="mb-2">
+                        <small class="text-muted">{{ request_obj.provisioned_at|date:"M d, H:i" }}</small>
+                        <br>Access provisioned
+                    </li>
+                    {% endif %}
+                    {% if request_obj.expires_at %}
+                    <li class="mb-2">
+                        <small class="text-muted">{{ request_obj.expires_at|date:"M d, H:i" }}</small>
+                        <br>Access expires
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Profile - PAM{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-person-circle"></i> User Profile
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Username</dt>
+                    <dd class="col-sm-8">{{ user.username }}</dd>
+
+                    <dt class="col-sm-4">Full Name</dt>
+                    <dd class="col-sm-8">{{ user.get_full_name|default:"Not set" }}</dd>
+
+                    <dt class="col-sm-4">Email</dt>
+                    <dd class="col-sm-8">{{ user.email|default:"Not set" }}</dd>
+
+                    <dt class="col-sm-4">Role</dt>
+                    <dd class="col-sm-8"><span class="badge bg-info">{{ user.get_role_display }}</span></dd>
+
+                    <dt class="col-sm-4">Entra ID</dt>
+                    <dd class="col-sm-8"><code>{{ user.entra_object_id|default:"Not linked" }}</code></dd>
+
+                    <dt class="col-sm-4">Last Login</dt>
+                    <dd class="col-sm-8">{{ user.last_login|date:"M d, Y H:i"|default:"Never" }}</dd>
+
+                    <dt class="col-sm-4">Member Since</dt>
+                    <dd class="col-sm-8">{{ user.date_joined|date:"M d, Y" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

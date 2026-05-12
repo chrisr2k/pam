@@ -1,0 +1,40 @@
+{
+  "family": "pam-celery-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/pam-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/pam-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "celery-worker",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/pam-web:latest",
+      "essential": true,
+      "environment": [
+        { "name": "DJANGO_DEBUG", "value": "False" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
+      "secrets": [
+        { "name": "DJANGO_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/DJANGO_SECRET_KEY" },
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/DATABASE_URL" },
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/REDIS_URL" },
+        { "name": "ENTRA_TENANT_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_TENANT_ID" },
+        { "name": "ENTRA_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_CLIENT_ID" },
+        { "name": "ENTRA_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_CLIENT_SECRET" },
+        { "name": "AWS_ACCESS_KEY_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_ACCESS_KEY_ID" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_SECRET_ACCESS_KEY" },
+        { "name": "AWS_SSO_INSTANCE_ARN", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_SSO_INSTANCE_ARN" }
+      ],
+      "command": ["celery", "-A", "pam", "worker", "-l", "info"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/pam-celery-worker",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "pam"
+        }
+      }
+    }
+  ]
+}

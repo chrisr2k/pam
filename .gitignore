@@ -1,0 +1,14 @@
+*.pyc
+__pycache__/
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.db
+staticfiles/
+media/
+deploy/terraform/terraform.tfvars
+deploy/terraform/.terraform/
+deploy/terraform/.terraform.lock.hcl

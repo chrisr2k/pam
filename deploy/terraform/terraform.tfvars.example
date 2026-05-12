@@ -1,0 +1,8 @@
+aws_region        = "us-east-1"
+vpc_id            = "vpc-xxxxxxxx"
+public_subnet_ids = ["subnet-xxxx1", "subnet-xxxx2"]
+private_subnet_ids = ["subnet-xxxx3", "subnet-xxxx4"]
+certificate_arn   = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/xxxx-xxxx-xxxx"
+allowed_hosts     = "pam.example.com,localhost"
+domain_name       = "pam.example.com"
+route53_zone_id   = "ZXXXXXXXXXXXXX"

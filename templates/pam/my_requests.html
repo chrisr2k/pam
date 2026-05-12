@@ -1,0 +1,55 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}My Requests - PAM{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">My Requests</h1>
+    <a href="{% url 'requests:create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> New Request
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if requests %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Role</th>
+                        <th>Provider</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td>{{ req.id }}</td>
+                        <td>{{ req.role.name }}</td>
+                        <td><span class="badge bg-secondary">{{ req.role.provider }}</span></td>
+                        <td>{{ req.requested_duration_minutes }} min</td>
+                        <td>
+                            <span class="badge badge-status-{{ req.status|lower }}">
+                                {{ req.get_status_display }}
+                            </span>
+                        </td>
+                        <td>{{ req.created_at|date:"M d, H:i" }}</td>
+                        <td>
+                            <a href="{% url 'requests:detail' req.id %}" class="btn btn-sm btn-outline-primary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">You haven't made any requests yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

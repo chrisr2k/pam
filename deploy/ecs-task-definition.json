@@ -1,0 +1,53 @@
+{
+  "family": "pam-web",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/pam-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/pam-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "web",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/pam-web:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "DJANGO_DEBUG", "value": "False" },
+        { "name": "DJANGO_ALLOWED_HOSTS", "value": "pam.example.com,localhost" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
+      "secrets": [
+        { "name": "DJANGO_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/DJANGO_SECRET_KEY" },
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/DATABASE_URL" },
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/REDIS_URL" },
+        { "name": "ENTRA_TENANT_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_TENANT_ID" },
+        { "name": "ENTRA_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_CLIENT_ID" },
+        { "name": "ENTRA_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/ENTRA_CLIENT_SECRET" },
+        { "name": "AWS_ACCESS_KEY_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_ACCESS_KEY_ID" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_SECRET_ACCESS_KEY" },
+        { "name": "AWS_SSO_INSTANCE_ARN", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:pam/AWS_SSO_INSTANCE_ARN" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/pam-web",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "pam"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

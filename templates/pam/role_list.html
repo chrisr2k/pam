@@ -1,0 +1,48 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Privileged Roles - PAM{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">Privileged Roles</h1>
+
+<div class="row">
+    {% for role in roles %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="card-title mb-0">{{ role.name }}</h5>
+                    <span class="badge bg-{% if role.provider == 'AWS' %}warning{% else %}primary{% endif %}">
+                        {{ role.provider }}
+                    </span>
+                </div>
+                <p class="card-text text-muted small">{{ role.description|default:"No description"|truncatewords:30 }}</p>
+                <ul class="list-unstyled small mb-3">
+                    <li><strong>Max Duration:</strong> {{ role.max_duration_minutes }} minutes</li>
+                    <li><strong>Requires Approval:</strong>
+                        {% if role.requires_approval %}
+                        <span class="text-warning">Yes</span>
+                        {% else %}
+                        <span class="text-success">No</span>
+                        {% endif %}
+                    </li>
+                    {% if role.aws_account_name %}
+                    <li><strong>AWS Account:</strong> {{ role.aws_account_name }}</li>
+                    {% endif %}
+                </ul>
+                <a href="{% url 'roles:detail' role.id %}" class="btn btn-outline-primary btn-sm">View Details</a>
+                <a href="{% url 'requests:create' %}?role={{ role.id }}" class="btn btn-primary btn-sm">Request Access</a>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col">
+        <div class="card">
+            <div class="card-body text-center">
+                <p class="text-muted mb-0">No privileged roles configured yet.</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

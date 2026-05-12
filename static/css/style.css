@@ -1,0 +1,100 @@
+/* PAM Application Styles */
+
+:root {
+    --pam-primary: #0d6efd;
+    --pam-success: #198754;
+    --pam-warning: #ffc107;
+    --pam-danger: #dc3545;
+    --pam-info: #0dcaf0;
+    --pam-dark: #212529;
+}
+
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Navbar */
+.navbar-brand {
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+/* Cards */
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    font-weight: 600;
+    border-bottom: 2px solid var(--pam-primary);
+}
+
+/* Status badges */
+.badge-status-pending { background-color: var(--pam-warning); color: #000; }
+.badge-status-approved { background-color: var(--pam-info); color: #000; }
+.badge-status-provisioning { background-color: var(--pam-primary); }
+.badge-status-provisioned { background-color: var(--pam-success); }
+.badge-status-active { background-color: var(--pam-success); }
+.badge-status-denied { background-color: var(--pam-danger); }
+.badge-status-expired { background-color: #6c757d; }
+.badge-status-revoked { background-color: var(--pam-danger); }
+.badge-status-failed { background-color: var(--pam-danger); }
+
+/* Dashboard stats */
+.stat-card {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.stat-card .stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
+}
+
+/* Tables */
+.table th {
+    font-weight: 600;
+    border-top: none;
+}
+
+/* Footer */
+.footer {
+    margin-top: auto;
+    padding: 1rem 0;
+    background-color: #fff;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Login page */
+.login-container {
+    max-width: 400px;
+    margin: 5rem auto;
+}
+
+/* Request form */
+.duration-input {
+    max-width: 200px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .stat-card .stat-number {
+        font-size: 1.75rem;
+    }
+}

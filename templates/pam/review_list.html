@@ -1,0 +1,48 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Access Reviews - PAM{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">Access Reviews</h1>
+
+<div class="card">
+    <div class="card-body">
+        {% if reviews %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Due Date</th>
+                        <th>Created By</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for review in reviews %}
+                    <tr>
+                        <td>{{ review.name }}</td>
+                        <td>
+                            <span class="badge bg-{% if review.status == 'COMPLETED' %}success{% elif review.status == 'IN_PROGRESS' %}warning{% else %}secondary{% endif %}">
+                                {{ review.get_status_display }}
+                            </span>
+                        </td>
+                        <td>{{ review.due_date|date:"M d, Y" }}</td>
+                        <td>{{ review.created_by.get_full_name|default:review.created_by.username }}</td>
+                        <td>{{ review.created_at|date:"M d, Y" }}</td>
+                        <td>
+                            <a href="{% url 'reviews:detail' review.id %}" class="btn btn-sm btn-outline-primary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No access reviews yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

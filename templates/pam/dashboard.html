@@ -1,0 +1,209 @@
+{% extends 'pam/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - PAM{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Dashboard</h1>
+    <a href="{% url 'requests:create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> New Access Request
+    </a>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card">
+            <div class="stat-number text-primary" id="stat-active-count">{{ active_requests|length }}</div>
+            <div class="stat-label">Active Sessions</div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card">
+            <div class="stat-number text-warning" id="stat-pending-count">{{ pending_approvals|length }}</div>
+            <div class="stat-label">Pending Approvals</div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card">
+            <div class="stat-number text-success">{{ available_roles|length }}</div>
+            <div class="stat-label">Available Roles</div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card">
+            <div class="stat-number text-info" id="stat-recent-count">{{ recent_requests|length }}</div>
+            <div class="stat-label">Recent Requests</div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Active Sessions -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-play-circle"></i> Active Sessions
+            </div>
+            <div class="card-body">
+                <div id="active-sessions-empty" {% if active_requests %}style="display:none;"{% endif %}>
+                    <p class="text-muted mb-0">No active sessions. <a href="{% url 'requests:create' %}">Request access</a> to get started.</p>
+                </div>
+                <div id="active-sessions-table" {% if not active_requests %}style="display:none;"{% endif %}>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Role</th>
+                                    <th>Provider</th>
+                                    <th>Expires</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="active-sessions-body">
+                                {% for req in active_requests %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'requests:detail' req.id %}">{{ req.role.name }}</a>
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ req.role.provider }}</span></td>
+                                    <td>{{ req.expires_at|timeuntil }}</td>
+                                    <td>
+                                        <span class="badge badge-status-{{ req.status|lower }}">
+                                            {{ req.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <form method="post" action="{% url 'requests:revoke' req.id %}" style="display:inline;">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Revoke access to {{ req.role.name }}?')">
+                                                Revoke
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Approvals -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Pending Approvals
+            </div>
+            <div class="card-body">
+                <div id="pending-approvals-empty" {% if pending_approvals %}style="display:none;"{% endif %}>
+                    <p class="text-muted mb-0">No pending approvals.</p>
+                </div>
+                <div id="pending-approvals-table" {% if not pending_approvals %}style="display:none;"{% endif %}>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Requester</th>
+                                    <th>Role</th>
+                                    <th>Duration</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pending-approvals-body">
+                                {% for req in pending_approvals %}
+                                <tr>
+                                    <td>{{ req.requester.get_full_name|default:req.requester.username }}</td>
+                                    <td>{{ req.role.name }}</td>
+                                    <td>{{ req.requested_duration_minutes }} min</td>
+                                    <td>
+                                        <a href="{% url 'requests:detail' req.id %}" class="btn btn-sm btn-outline-primary">Review</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Available Roles -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-shield-check"></i> Available Roles
+            </div>
+            <div class="card-body">
+                {% if available_roles %}
+                <div class="list-group list-group-flush">
+                    {% for role in available_roles %}
+                    <a href="{% url 'roles:detail' role.id %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ role.name }}</strong>
+                            <br>
+                            <small class="text-muted">{{ role.description|truncatewords:20 }}</small>
+                        </div>
+                        <span class="badge bg-{% if role.provider == 'AWS' %}warning{% else %}primary{% endif %} rounded-pill">
+                            {{ role.provider }}
+                        </span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">No roles configured yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Requests -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock"></i> Recent Requests
+            </div>
+            <div class="card-body">
+                <div id="recent-requests-empty" {% if recent_requests %}style="display:none;"{% endif %}>
+                    <p class="text-muted mb-0">No recent requests.</p>
+                </div>
+                <div id="recent-requests-table" {% if not recent_requests %}style="display:none;"{% endif %}>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-requests-body">
+                                {% for req in recent_requests %}
+                                <tr>
+                                    <td><a href="{% url 'requests:detail' req.id %}">#{{ req.id }}</a></td>
+                                    <td>{{ req.role.name }}</td>
+                                    <td>
+                                        <span class="badge badge-status-{{ req.status|lower }}">
+                                            {{ req.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td><small>{{ req.created_at|date:"M d, H:i" }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

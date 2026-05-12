@@ -1,0 +1,208 @@
+{% extends 'pam/base.html' %}
+{% load static %}
+
+{% block title %}Entra ID Setup - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-microsoft"></i> Entra ID Configuration</h2>
+            <p class="text-muted">Configure Microsoft Entra ID (Azure AD) for authentication and PIM role management.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Configuration Form -->
+        <div class="col-lg-5 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-gear-fill"></i> Settings</span>
+                    {% if is_configured %}
+                    <span class="badge bg-success">Configured</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Not Configured</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label for="tenant_id" class="form-label">
+                                <i class="bi bi-building"></i> Tenant ID (Directory ID)
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="tenant_id" name="tenant_id"
+                                   value="{{ config.tenant_id }}" placeholder="00000000-0000-0000-0000-000000000000">
+                            <div class="form-text">GUID from Azure portal → Entra ID → Overview</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="client_id" class="form-label">
+                                <i class="bi bi-key"></i> Client ID (Application ID)
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="client_id" name="client_id"
+                                   value="{{ config.client_id }}" placeholder="00000000-0000-0000-0000-000000000000">
+                            <div class="form-text">From App Registration → Overview</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="client_secret" class="form-label">
+                                <i class="bi bi-lock"></i> Client Secret
+                            </label>
+                            <div class="input-group">
+                                <input type="password" class="form-control font-monospace" id="client_secret" name="client_secret"
+                                       value="{{ config.client_secret }}" placeholder="Enter your client secret">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleSecret()">
+                                    <i class="bi bi-eye" id="eye-icon"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">From App Registration → Certificates & Secrets</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="redirect_uri" class="form-label">
+                                <i class="bi bi-link-45deg"></i> Redirect URI
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="redirect_uri" name="redirect_uri"
+                                   value="{{ config.redirect_uri|default:callback_url }}" placeholder="{{ callback_url }}">
+                            <div class="form-text">Must match exactly what's registered in the app</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-save"></i> Save Configuration
+                        </button>
+                    </form>
+                </div>
+                {% if is_configured %}
+                <div class="card-footer text-success small">
+                    <i class="bi bi-check-circle-fill"></i>
+                    Entra ID is configured. Users can sign in with Microsoft.
+                    {% if config.configured_by %}
+                    <br>Last configured by <strong>{{ config.configured_by.get_full_name|default:config.configured_by.username }}</strong>
+                    on <strong>{{ config.configured_at|date:"M d, Y H:i" }}</strong>.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Step-by-Step Instructions -->
+        <div class="col-lg-7 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-journal-text"></i> Setup Guide
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Follow these steps to configure Microsoft Entra ID for this PAM application.</p>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">1</span> Create an App Registration</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Go to the <a href="https://portal.azure.com/" target="_blank">Azure Portal</a> → <strong>Microsoft Entra ID</strong> → <strong>App registrations</strong> → <strong>New registration</strong>.</p>
+                            <table class="table table-sm table-bordered">
+                                <tr><th>Name</th><td><code>PAM-App</code></td></tr>
+                                <tr><th>Supported account types</th><td><strong>Accounts in this organizational directory only</strong></td></tr>
+                                <tr><th>Redirect URI</th><td><strong>Web</strong> → <code class="user-select-all">{{ callback_url }}</code></td></tr>
+                            </table>
+                            <p class="mb-0">Click <strong>Register</strong>. Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong> from the overview page.</p>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">2</span> Create a Client Secret</h5>
+                        <div class="ms-4 ps-2">
+                            <p>In your app registration, go to <strong>Certificates & secrets</strong> → <strong>Client secrets</strong> → <strong>New client secret</strong>.</p>
+                            <ul>
+                                <li>Give it a description (e.g. <code>PAM Secret</code>)</li>
+                                <li>Set an expiry period (12 months recommended)</li>
+                                <li>Click <strong>Add</strong></li>
+                            </ul>
+                            <div class="alert alert-warning py-2 mb-0">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <strong>Copy the secret value now</strong> — you won't be able to see it again after leaving this page.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">3</span> Configure API Permissions</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Go to <strong>API permissions</strong> → <strong>Add a permission</strong> → <strong>Microsoft Graph</strong>.</p>
+                            <h6 class="mt-3">Delegated permissions (for user sign-in):</h6>
+                            <ul>
+                                <li><code>openid</code></li>
+                                <li><code>profile</code></li>
+                                <li><code>email</code></li>
+                                <li><code>User.Read</code></li>
+                            </ul>
+                            <h6 class="mt-3">Application permissions (for PIM automation):</h6>
+                            <ul>
+                                <li><code>RoleManagement.ReadWrite.Directory</code></li>
+                            </ul>
+                            <p class="mb-0">Click <strong>Grant admin consent</strong> for your organization.</p>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">4</span> Enable PIM (Optional)</h5>
+                        <div class="ms-4 ps-2">
+                            <p>To use PIM role activation, go to <strong>Entra ID</strong> → <strong>Identity Governance</strong> → <strong>Privileged Identity Management</strong> → <strong>Azure AD roles</strong>.</p>
+                            <ul>
+                                <li>Select roles you want to manage</li>
+                                <li>Add eligible assignments for users</li>
+                                <li>Configure role settings (activation max duration, approval requirements, etc.)</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">5</span> Add Entra Roles in PAM</h5>
+                        <div class="ms-4 ps-2">
+                            <p>After configuring Entra, add the roles you want to manage:</p>
+                            <ol>
+                                <li>Go to <a href="{% url 'admin:index' %}">Django Admin</a> → <strong>Roles</strong> → <strong>Privileged roles</strong></li>
+                                <li>Click <strong>Add privileged role</strong></li>
+                                <li>Set <strong>Provider</strong> to <code>ENTRA</code></li>
+                                <li>Set <strong>External ID</strong> to the Entra role definition GUID</li>
+                            </ol>
+                            <p class="mb-0">Find role GUIDs via: <code class="user-select-all">az rest --method GET --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions"</code></p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h5><span class="badge bg-success rounded-pill me-2">✓</span> Test the Configuration</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Once you've saved the settings above:</p>
+                            <ol>
+                                <li>Open an incognito/private browser window</li>
+                                <li>Navigate to <a href="/accounts/login/" target="_blank">/accounts/login/</a></li>
+                                <li>You should see a <strong>"Sign in with Microsoft"</strong> button</li>
+                                <li>Click it and authenticate with your corporate credentials</li>
+                            </ol>
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-info-circle-fill"></i>
+                                If you see a local username/password form instead, the configuration is incomplete or incorrect.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSecret() {
+    const input = document.getElementById('client_secret');
+    const icon = document.getElementById('eye-icon');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'bi bi-eye';
+    }
+}
+</script>
+{% endblock %}
