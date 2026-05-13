@@ -165,9 +165,17 @@ Generate a secure secret key:
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-## Step 7: Set Up SSL with Caddy (Recommended)
+## Step 7: Configure SSL with Caddy
 
-Create a `Caddyfile` in the project root:
+The project includes a `Caddyfile` and Caddy service in `docker-compose.yml` by default.
+
+Edit the `Caddyfile` to set your domain:
+
+```bash
+nano Caddyfile
+```
+
+Replace `your-domain.com` with your actual domain:
 
 ```caddyfile
 your-domain.com {
@@ -178,30 +186,8 @@ your-domain.com {
 }
 ```
 
-Add Caddy to `docker-compose.yml`:
-
-```yaml
-services:
-  # ... existing db, redis, web, celery_worker, celery_beat services ...
-
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-
-volumes:
-  postgres_data:
-  caddy_data:
-  caddy_config:
-```
-
+> **Note**: If you don't have a domain yet, you can comment out the Caddy service in `docker-compose.yml` and access the app directly on port 8080 (e.g., `http://<VM_IP>:8080`).
+>
 > **Alternative**: If you prefer Nginx, use `nginx:alpine` with certbot for Let's Encrypt.
 
 ## Step 8: Start the Application

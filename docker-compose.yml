@@ -93,5 +93,19 @@ services:
         condition: service_healthy
     command: celery -A pam beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
