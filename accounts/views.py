@@ -54,7 +54,7 @@ class LoginView(View):
         # Get credentials from config source
         if hasattr(config, 'tenant_id'):  # Database model
             client_id = config.client_id
-            client_secret = config.client_secret
+            client_secret = config.get_client_secret()
             tenant_id = config.tenant_id
             # Use EXTERNAL_URL if set (for ngrok), otherwise use DB redirect_uri or build from request
             external_url = os.getenv('EXTERNAL_URL', '')
@@ -177,7 +177,10 @@ class EntraSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
         config = EntraConfig.get_config()
         config.tenant_id = request.POST.get('tenant_id', '').strip()
         config.client_id = request.POST.get('client_id', '').strip()
-        config.client_secret = request.POST.get('client_secret', '').strip()
+        raw_secret = request.POST.get('client_secret', '').strip()
+        if raw_secret:
+            config.set_client_secret(raw_secret)
+        # If no new secret provided, keep the existing encrypted one
         config.redirect_uri = request.POST.get('redirect_uri', '').strip()
         config.configured_by = request.user
         config.save()
