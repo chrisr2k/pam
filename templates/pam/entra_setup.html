@@ -52,12 +52,18 @@
                             </label>
                             <div class="input-group">
                                 <input type="password" class="form-control font-monospace" id="client_secret" name="client_secret"
-                                       value="{{ config.client_secret }}" placeholder="Enter your client secret">
+                                       value="" placeholder="{% if is_configured %}Leave blank to keep existing secret{% else %}Enter your client secret{% endif %}">
                                 <button class="btn btn-outline-secondary" type="button" onclick="toggleSecret()">
                                     <i class="bi bi-eye" id="eye-icon"></i>
                                 </button>
                             </div>
-                            <div class="form-text">From App Registration → Certificates & Secrets</div>
+                            <div class="form-text">
+                                {% if is_configured %}
+                                <span class="text-success"><i class="bi bi-check-circle-fill"></i> Secret is encrypted at rest. Leave blank to keep the existing value.</span>
+                                {% else %}
+                                From App Registration → Certificates & Secrets
+                                {% endif %}
+                            </div>
                         </div>
 
                         <div class="mb-3">

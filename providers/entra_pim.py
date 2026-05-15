@@ -44,7 +44,7 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
             if db_config.is_configured():
                 self._authority = f'https://login.microsoftonline.com/{db_config.tenant_id}'
                 self._client_id = db_config.client_id
-                self._client_secret = db_config.client_secret
+                self._client_secret = db_config.get_client_secret()
                 logger.info(f'Loaded Entra config from DB: tenant={db_config.tenant_id}')
                 return
         except Exception as e:

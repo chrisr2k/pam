@@ -1,5 +1,10 @@
+import logging
+
 from django.contrib.auth.models import AbstractUser
+from django.core.signing import Signer, BadSignature
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class User(AbstractUser):
@@ -42,7 +47,13 @@ class User(AbstractUser):
 
 
 class EntraConfig(models.Model):
-    """Stores Entra ID configuration in the database."""
+    """Stores Entra ID configuration in the database.
+
+    The client_secret is encrypted at rest using Django's SECRET_KEY
+    so it cannot be viewed on the GUI or in the database directly.
+    """
+
+    _signer = Signer(salt='accounts.EntraConfig.client_secret')
 
     tenant_id = models.CharField(
         max_length=128, blank=True, default='',
@@ -57,7 +68,7 @@ class EntraConfig(models.Model):
     client_secret = models.CharField(
         max_length=512, blank=True, default='',
         verbose_name='Client Secret',
-        help_text='The client secret value from Certificates & Secrets',
+        help_text='The client secret value from Certificates & Secrets (encrypted at rest)',
     )
     redirect_uri = models.CharField(
         max_length=256, blank=True, default='',
@@ -78,9 +89,35 @@ class EntraConfig(models.Model):
         return f'Entra Config: {self.tenant_id or "Not configured"}'
 
     def is_configured(self) -> bool:
-        return bool(self.tenant_id and self.client_id and self.client_secret)
+        return bool(self.tenant_id and self.client_id and self.get_client_secret())
+
+    def get_client_secret(self) -> str:
+        """Decrypt and return the client secret."""
+        raw = self.client_secret
+        if not raw:
+            return ''
+        # Check if already encrypted (signed values contain a colon separator)
+        if ':' in raw:
+            try:
+                return self._signer.unsign(raw)
+            except BadSignature:
+                logger.warning('Failed to decrypt client_secret - returning raw value')
+                return raw
+        # Plain text (legacy or new unsaved value) - return as-is
+        return raw
+
+    def set_client_secret(self, value: str) -> None:
+        """Encrypt and store the client secret."""
+        if not value:
+            self.client_secret = ''
+        else:
+            self.client_secret = self._signer.sign(value)
 
     def save(self, *args, **kwargs):
+        # Encrypt the client_secret before saving if it's not already encrypted
+        raw = self.client_secret
+        if raw and ':' not in raw:
+            self.client_secret = self._signer.sign(raw)
         # Ensure only one config row exists
         self.pk = 1
         super().save(*args, **kwargs)

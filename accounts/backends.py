@@ -25,7 +25,7 @@ class EntraOIDCBackend(BaseBackend):
             return {
                 'tenant_id': db_config.tenant_id,
                 'client_id': db_config.client_id,
-                'client_secret': db_config.client_secret,
+                'client_secret': db_config.get_client_secret(),
             }
         if all([settings.ENTRA_TENANT_ID, settings.ENTRA_CLIENT_ID, settings.ENTRA_CLIENT_SECRET]):
             return {
