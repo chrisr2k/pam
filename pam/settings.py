@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'tasks',
     'audit',
     'reviews',
+    'notifications',
 ]
 
 MIDDLEWARE = [

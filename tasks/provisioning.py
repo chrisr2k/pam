@@ -66,6 +66,14 @@ def provision_access_sync(request_id: int):
             access_request.mark_provisioned(provider_ref=result.get('reference_id', ''))
             logger.info(f'Successfully provisioned access for request {request_id}')
 
+            # Send notification
+            from notifications.services import send_notification
+            send_notification(
+                access_request,
+                'access_provisioned',
+                recipients=[access_request.requester.email],
+            )
+
             # Schedule deprovisioning via a background thread
             expires_at = access_request.expires_at
             if expires_at:

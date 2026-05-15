@@ -1,0 +1,227 @@
+{% extends 'pam/base.html' %}
+{% load static %}
+
+{% block title %}Notification Settings - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-bell-fill"></i> Notification Settings</h1>
+        {% if is_configured %}
+        <span class="badge bg-success fs-6"><i class="bi bi-check-circle"></i> Active</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6"><i class="bi bi-x-circle"></i> Disabled</span>
+        {% endif %}
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill"></i>
+        Configure email, Slack, and/or Microsoft Teams to receive notifications when access requests are created, approved, denied, or provisioned.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <!-- Email Section -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-envelope-fill"></i> Email Notifications</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="email_enabled" name="email_enabled"
+                           {% if config.email_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="email_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="smtp_host" class="form-label">SMTP Host</label>
+                        <input type="text" class="form-control" id="smtp_host" name="smtp_host"
+                               value="{{ config.smtp_host }}" placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="smtp_port" class="form-label">SMTP Port</label>
+                        <input type="number" class="form-control" id="smtp_port" name="smtp_port"
+                               value="{{ config.smtp_port }}">
+                    </div>
+                    <div class="col-md-3 mb-3 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="smtp_use_tls" name="smtp_use_tls"
+                                   {% if config.smtp_use_tls %}checked{% endif %}>
+                            <label class="form-check-label" for="smtp_use_tls">Use TLS</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="smtp_username" class="form-label">SMTP Username</label>
+                        <input type="text" class="form-control" id="smtp_username" name="smtp_username"
+                               value="{{ config.smtp_username }}" placeholder="user@gmail.com">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="smtp_password" class="form-label">SMTP Password</label>
+                        <input type="password" class="form-control" id="smtp_password" name="smtp_password"
+                               placeholder="{% if config.smtp_password %}•••••••• (leave blank to keep current){% else %}Enter SMTP password{% endif %}">
+                        {% if config.smtp_password %}
+                        <div class="form-text text-success">
+                            <i class="bi bi-check-circle-fill"></i> Password is stored (encrypted at rest)
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="email_from" class="form-label">From Address</label>
+                    <input type="email" class="form-control" id="email_from" name="email_from"
+                           value="{{ config.email_from }}" placeholder="noreply@pam.local">
+                    <div class="form-text">The sender email address for notifications.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slack Section -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-slack"></i> Slack Notifications</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="slack_enabled" name="slack_enabled"
+                           {% if config.slack_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="slack_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="slack_webhook_url" class="form-label">Webhook URL</label>
+                    <input type="url" class="form-control" id="slack_webhook_url" name="slack_webhook_url"
+                           value="{{ config.slack_webhook_url }}"
+                           placeholder="https://hooks.slack.com/services/T00/B00/xxxxx">
+                    <div class="form-text">
+                        Create an <a href="https://api.slack.com/messaging/webhooks" target="_blank">Incoming Webhook</a>
+                        in your Slack workspace.
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="slack_channel" class="form-label">Channel (optional)</label>
+                    <input type="text" class="form-control" id="slack_channel" name="slack_channel"
+                           value="{{ config.slack_channel }}" placeholder="#pam-notifications">
+                    <div class="form-text">Override the default webhook channel.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teams Section -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-microsoft-teams"></i> Microsoft Teams Notifications</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="teams_enabled" name="teams_enabled"
+                           {% if config.teams_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="teams_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="teams_webhook_url" class="form-label">Webhook URL</label>
+                    <input type="url" class="form-control" id="teams_webhook_url" name="teams_webhook_url"
+                           value="{{ config.teams_webhook_url }}"
+                           placeholder="https://your-org.webhook.office.com/webhookb2/...">
+                    <div class="form-text">
+                        Create a <a href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook" target="_blank">Teams Incoming Webhook</a>
+                        in your Teams channel.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Toggles -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-toggle-on"></i> Notification Events</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Choose which events trigger notifications:</p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_request_created"
+                                   name="notify_on_request_created"
+                                   {% if config.notify_on_request_created %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_request_created">
+                                <strong>Request Created</strong>
+                                <br><small class="text-muted">When a user submits a new access request</small>
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_request_approved"
+                                   name="notify_on_request_approved"
+                                   {% if config.notify_on_request_approved %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_request_approved">
+                                <strong>Request Approved</strong>
+                                <br><small class="text-muted">When an approver approves a request</small>
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_request_denied"
+                                   name="notify_on_request_denied"
+                                   {% if config.notify_on_request_denied %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_request_denied">
+                                <strong>Request Denied</strong>
+                                <br><small class="text-muted">When an approver denies a request</small>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_access_provisioned"
+                                   name="notify_on_access_provisioned"
+                                   {% if config.notify_on_access_provisioned %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_access_provisioned">
+                                <strong>Access Provisioned</strong>
+                                <br><small class="text-muted">When privileged access has been granted</small>
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_access_expiring"
+                                   name="notify_on_access_expiring"
+                                   {% if config.notify_on_access_expiring %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_access_expiring">
+                                <strong>Access Expiring Soon</strong>
+                                <br><small class="text-muted">When access is about to expire (requires scheduled task)</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <a href="{% url 'requests:dashboard' %}" class="btn btn-secondary me-md-2">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Toggle email fields visibility based on enabled state
+    document.getElementById('email_enabled').addEventListener('change', function() {
+        const inputs = document.querySelectorAll('#email_enabled_card input, #email_enabled_card select');
+        inputs.forEach(input => input.disabled = !this.checked);
+    });
+    document.getElementById('slack_enabled').addEventListener('change', function() {
+        const inputs = document.querySelectorAll('#slack_enabled_card input');
+        inputs.forEach(input => input.disabled = !this.checked);
+    });
+    document.getElementById('teams_enabled').addEventListener('change', function() {
+        const inputs = document.querySelectorAll('#teams_enabled_card input');
+        inputs.forEach(input => input.disabled = !this.checked);
+    });
+</script>
+{% endblock %}
