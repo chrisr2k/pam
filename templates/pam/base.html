@@ -84,6 +84,7 @@
                             <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">Profile</a></li>
                             {% if user.is_staff %}
                             <li><a class="dropdown-item" href="{% url 'accounts:entra_setup' %}">Entra ID Setup</a></li>
+                            <li><a class="dropdown-item" href="{% url 'notifications:settings' %}">Notification Settings</a></li>
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}">Django Admin</a></li>
                             {% endif %}
                             <li><hr class="dropdown-divider"></li>

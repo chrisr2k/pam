@@ -11,6 +11,7 @@ from .models import AccessRequest, Approval
 from roles.models import PrivilegedRole
 from tasks.provisioning import provision_access, deprovision_access
 from audit.middleware import log_action
+from notifications.services import send_notification
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,15 @@ class RequestCreateView(LoginRequiredMixin, CreateView):
                 'duration': self.object.requested_duration_minutes,
             },
             request=self.request,
+        )
+        # Send notification to approvers
+        approver_emails = list(
+            self.object.role.approvers.values_list('email', flat=True)
+        )
+        send_notification(
+            self.object,
+            'request_created',
+            recipients=approver_emails,
         )
         messages.success(self.request, 'Access request submitted successfully.')
         return response
@@ -117,6 +127,13 @@ class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
         )
         messages.success(request, f'Request #{access_request.id} approved.')
 
+        # Send notification to requester
+        send_notification(
+            access_request,
+            'request_approved',
+            recipients=[access_request.requester.email],
+        )
+
         # Provision synchronously (Celery will be used when broker is available)
         from tasks.provisioning import provision_access_sync
         provision_access_sync(access_request.id)
@@ -158,6 +175,12 @@ class DenyRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
                 'reason': reason,
             },
             request=request,
+        )
+        # Send notification to requester
+        send_notification(
+            access_request,
+            'request_denied',
+            recipients=[access_request.requester.email],
         )
         messages.warning(request, f'Request #{access_request.id} denied.')
         return redirect('requests:detail', pk=access_request.pk)

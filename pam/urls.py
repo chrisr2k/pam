@@ -9,5 +9,6 @@ urlpatterns = [
     path('requests/', include('access_requests.urls')),
     path('reviews/', include('reviews.urls')),
     path('audit/', include('audit.urls')),
+    path('notifications/', include('notifications.urls')),
     path('', RedirectView.as_view(pattern_name='requests:dashboard', permanent=False)),
 ]
