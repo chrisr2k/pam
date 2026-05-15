@@ -105,6 +105,7 @@ class EntraConfigModelTests(TestCase):
         self.assertEqual(config.tenant_id, '')
         self.assertEqual(config.client_id, '')
         self.assertEqual(config.client_secret, '')
+        self.assertEqual(config.get_client_secret(), '')
 
     def test_get_config_returns_existing(self):
         """Test get_config returns existing config."""
@@ -122,8 +123,14 @@ class EntraConfigModelTests(TestCase):
         config = EntraConfig.get_config()
         config.tenant_id = 'tenant-123'
         config.client_id = 'client-456'
-        config.client_secret = 'secret-789'
+        config.set_client_secret('secret-789')
+        config.save()
         self.assertTrue(config.is_configured())
+        # Verify the secret is encrypted in the database
+        self.assertIn(':', config.client_secret)
+        self.assertNotEqual(config.client_secret, 'secret-789')
+        # Verify it decrypts correctly
+        self.assertEqual(config.get_client_secret(), 'secret-789')
 
     def test_is_configured_partial(self):
         """Test is_configured returns False when partially set."""
@@ -309,7 +316,11 @@ class EntraSetupViewTests(TestCase):
         config = EntraConfig.get_config()
         self.assertEqual(config.tenant_id, 'new-tenant')
         self.assertEqual(config.client_id, 'new-client')
-        self.assertEqual(config.client_secret, 'new-secret')
+        # Secret should be encrypted in DB
+        self.assertIn(':', config.client_secret)
+        self.assertNotEqual(config.client_secret, 'new-secret')
+        # But should decrypt correctly
+        self.assertEqual(config.get_client_secret(), 'new-secret')
 
     def test_setup_post_success_message(self):
         """Test that successful POST shows success message."""
