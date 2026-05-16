@@ -60,8 +60,10 @@ def _detect_cloud():
     if os.getenv('KUBERNETES_SERVICE_HOST') and os.getenv('GCP_METADATA'):
         return 'gcp'
 
-    # OCI: resource principal
+    # OCI: resource principal or explicit vault OCID
     if os.getenv('OCI_RESOURCE_PRINCIPAL_VERSION'):
+        return 'oci'
+    if os.getenv('OCI_VAULT_OCID'):
         return 'oci'
 
     return 'local'
@@ -237,7 +239,18 @@ class GcpSecretsResolver(BaseSecretsResolver):
 
 
 class OciSecretsResolver(BaseSecretsResolver):
-    """Resolves secrets from OCI Vault using resource principal (instance principal / OKE workload identity)."""
+    """Resolves secrets from OCI Vault using resource principal (instance principal / OKE workload identity).
+
+    Requires OCI_VAULT_OCID to be set. Also requires OCI_SECRET_OCID_<NAME>
+    environment variables mapping each secret name to its OCID.
+
+    Example:
+        OCI_VAULT_OCID=ocid1.vault.oc1.iad.xxx
+        OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY=ocid1.secret.oc1.iad.xxx
+        OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET=ocid1.secret.oc1.iad.xxx
+
+    If individual OCIDs are not provided, falls back to environment variables.
+    """
 
     SECRET_NAME_MAP = {
         'DJANGO_SECRET_KEY': 'pam_django_secret_key',
@@ -273,15 +286,33 @@ class OciSecretsResolver(BaseSecretsResolver):
         return self._client
 
     def _fetch_secret(self, secret_name):
+        """Fetch a secret from OCI Vault by its OCID.
+
+        The secret OCID is read from an environment variable named
+        OCI_SECRET_OCID_<UPPERCASE_SECRET_NAME> (e.g. OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY).
+        """
         vault_ocid = os.getenv('OCI_VAULT_OCID', '')
         if not vault_ocid:
             raise ValueError(
                 'OCI_VAULT_OCID environment variable is required '
                 'for OCI Vault integration.'
             )
-        # OCI secrets are referenced by OCID
-        response = self.client.get_secret_bundle(secret_id=vault_ocid)
-        return response.data.secret_bundle_content.content
+
+        # Get the secret OCID from an env var
+        env_var_name = f'OCI_SECRET_OCID_{secret_name.upper()}'
+        secret_ocid = os.getenv(env_var_name)
+
+        if not secret_ocid:
+            raise ValueError(
+                f'Cannot find OCID for secret "{secret_name}". '
+                f'Set {env_var_name} environment variable with the secret OCID.'
+            )
+
+        response = self.client.get_secret_bundle(secret_id=secret_ocid)
+        content = response.data.secret_bundle_content.content
+        # OCI returns base64-encoded content
+        import base64
+        return base64.b64decode(content).decode('utf-8')
 
 
 # ── Local fallback ─────────────────────────────────────────────────────────
@@ -368,6 +399,8 @@ def detect_cloud():
 
     # OCI
     if os.getenv('OCI_RESOURCE_PRINCIPAL_VERSION'):
+        return 'oci'
+    if os.getenv('OCI_VAULT_OCID'):
         return 'oci'
 
     return 'local'
