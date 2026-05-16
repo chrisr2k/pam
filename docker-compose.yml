@@ -31,7 +31,7 @@ services:
       ENV_MASTER_PASSWORD: ${ENV_MASTER_PASSWORD:-}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-to-a-random-secret-key}
       DJANGO_DEBUG: "False"
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,azurepam.com
       DATABASE_URL: postgres://pam:pam_password@db:5432/pam
       REDIS_URL: redis://redis:6379/0
       ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
