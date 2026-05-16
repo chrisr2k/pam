@@ -171,12 +171,25 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-# Entra ID (Azure AD) OIDC Settings
+# Entra ID (Azure AD) OIDC Settings (for user login)
 ENTRA_TENANT_ID = os.getenv('ENTRA_TENANT_ID', '')
 ENTRA_CLIENT_ID = os.getenv('ENTRA_CLIENT_ID', '')
 ENTRA_CLIENT_SECRET = os.getenv('ENTRA_CLIENT_SECRET', '')
 ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
 ENTRA_SCOPES = ['User.Read']
+
+# Entra ID PIM Settings (for role management - separate app registration)
+# These can use ManagedIdentity, certificate, or client secret.
+# If not set, falls back to the OIDC app credentials (not recommended for production).
+ENTRA_PIM_TENANT_ID = os.getenv('ENTRA_PIM_TENANT_ID', '')
+ENTRA_PIM_CLIENT_ID = os.getenv('ENTRA_PIM_CLIENT_ID', '')
+ENTRA_PIM_CLIENT_SECRET = os.getenv('ENTRA_PIM_CLIENT_SECRET', '')
+
+# Certificate-based auth for PIM (alternative to client secret)
+# Path to a PFX/PEM certificate file, or base64-encoded cert data
+ENTRA_PIM_CERTIFICATE_PATH = os.getenv('ENTRA_PIM_CERTIFICATE_PATH', '')
+ENTRA_PIM_CERTIFICATE_PASSWORD = os.getenv('ENTRA_PIM_CERTIFICATE_PASSWORD', '')
+ENTRA_PIM_CERTIFICATE_B64 = os.getenv('ENTRA_PIM_CERTIFICATE_B64', '')
 
 # AWS Settings
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')

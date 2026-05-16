@@ -1,3 +1,17 @@
+"""
+Entra ID PIM provider using Microsoft Graph API.
+
+Uses the EntraCredentialFactory to auto-select the best authentication method:
+- ManagedIdentityCredential (Azure environments)
+- ClientCertificateCredential (non-Azure with certificate)
+- ClientSecretCredential (development fallback)
+
+Uses SEPARATE credentials from the OIDC login app for security isolation.
+The PIM management app should have only the permissions it needs:
+    - PrivilegedAccess.ReadWrite.AzureAD
+    - RoleManagement.ReadWrite.Directory
+"""
+
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -8,6 +22,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .base import BasePrivilegedAccessProvider
+from .credential_factory import EntraCredentialFactory
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +33,11 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
     """
     Provider implementation for Entra ID privileged access management.
     Uses Microsoft Graph API to assign/unassign directory roles directly.
-    This works with any Entra ID license tier (no P2 license required).
+
+    Authentication method is auto-selected by EntraCredentialFactory:
+    - Azure: ManagedIdentityCredential (no secrets)
+    - OCI/On-prem: ClientCertificateCredential (cert from vault or file)
+    - Dev: ClientSecretCredential (fallback, not recommended for production)
 
     How it works:
     - Provision: Creates a permanent role assignment via adminAssign
@@ -30,53 +49,87 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
 
     def __init__(self):
         self._access_token = None
-        self._authority = None
+        self._factory = EntraCredentialFactory()
+        self._tenant_id = None
         self._client_id = None
         self._client_secret = None
 
     def _load_config(self):
-        """Load Entra config from DB or settings."""
-        if self._client_id and self._client_secret:
+        """Load PIM-specific Entra config from DB or settings."""
+        if self._client_id and self._tenant_id:
             return
+
+        # First try: PIM-specific config from database
         try:
             from accounts.models import EntraConfig
             db_config = EntraConfig.get_config()
             if db_config.is_configured():
-                self._authority = f'https://login.microsoftonline.com/{db_config.tenant_id}'
-                self._client_id = db_config.client_id
-                self._client_secret = db_config.get_client_secret()
-                logger.info(f'Loaded Entra config from DB: tenant={db_config.tenant_id}')
-                return
+                # Use PIM-specific credentials if available
+                pim_tenant = getattr(db_config, 'pim_tenant_id', '') or db_config.tenant_id
+                pim_client_id = getattr(db_config, 'pim_client_id', '') or db_config.client_id
+                pim_client_secret = getattr(db_config, 'pim_client_secret', '')
+
+                if pim_client_id and pim_client_secret:
+                    self._tenant_id = pim_tenant
+                    self._client_id = pim_client_id
+                    self._client_secret = pim_client_secret
+                    logger.info(
+                        f'Loaded PIM-specific Entra config from DB: '
+                        f'tenant={pim_tenant} client={pim_client_id[:8]}...'
+                    )
+                    return
         except Exception as e:
-            logger.warning(f'Failed to load Entra config from DB: {e}')
-        self._authority = settings.ENTRA_AUTHORITY
+            logger.warning(f'Failed to load PIM config from DB: {e}')
+
+        # Second try: PIM-specific settings from environment
+        pim_tenant = settings.ENTRA_PIM_TENANT_ID or settings.ENTRA_TENANT_ID
+        pim_client_id = settings.ENTRA_PIM_CLIENT_ID or settings.ENTRA_CLIENT_ID
+        pim_client_secret = settings.ENTRA_PIM_CLIENT_SECRET or settings.ENTRA_CLIENT_SECRET
+
+        if pim_client_id and (pim_client_secret or
+                              self._factory._detect_environment() in ('managed_identity', 'certificate')):
+            self._tenant_id = pim_tenant
+            self._client_id = pim_client_id
+            self._client_secret = pim_client_secret
+            logger.info(
+                f'Loaded PIM config from settings: '
+                f'tenant={pim_tenant} client={pim_client_id[:8]}...'
+            )
+            return
+
+        # Third fallback: use OIDC app credentials (not ideal but works for dev)
+        self._tenant_id = settings.ENTRA_TENANT_ID
         self._client_id = settings.ENTRA_CLIENT_ID
         self._client_secret = settings.ENTRA_CLIENT_SECRET
-        logger.info(f'Fell back to settings: authority={self._authority}')
+        logger.warning(
+            'No PIM-specific credentials configured. '
+            'Falling back to OIDC app credentials. '
+            'For production, configure separate PIM app credentials.'
+        )
 
     def _get_access_token(self) -> Optional[str]:
-        """Get an access token for Microsoft Graph API using client credentials."""
+        """Get an access token for Microsoft Graph API using the credential factory."""
         if self._access_token:
             return self._access_token
 
         self._load_config()
 
-        import msal
-        app = msal.ConfidentialClientApplication(
+        if not self._client_id or not self._tenant_id:
+            logger.error('PIM credentials not configured')
+            return None
+
+        # Use the credential factory to get a token
+        token = self._factory.get_graph_token(
+            tenant_id=self._tenant_id,
             client_id=self._client_id,
-            client_credential=self._client_secret,
-            authority=self._authority,
+            client_secret=self._client_secret,
         )
 
-        result = app.acquire_token_for_client(
-            scopes=['https://graph.microsoft.com/.default']
-        )
-
-        if 'access_token' in result:
-            self._access_token = result['access_token']
+        if token:
+            self._access_token = token
             return self._access_token
         else:
-            logger.error(f'Failed to acquire Graph API token: {result.get("error_description")}')
+            logger.error('Failed to acquire Graph API token via credential factory')
             return None
 
     async def _graph_request(self, method: str, path: str, data: dict = None) -> dict:

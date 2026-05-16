@@ -19,42 +19,57 @@ class UserAdmin(BaseUserAdmin):
 @admin.register(EntraConfig)
 class EntraConfigAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'client_id', 'configured_at', 'configured_by')
-    readonly_fields = ('configured_at', 'configured_by', 'client_secret_display')
-    fieldsets = (
-        (None, {
-            'fields': ('tenant_id', 'client_id', 'client_secret', 'redirect_uri'),
-        }),
-        ('Metadata', {
-            'fields': ('configured_at', 'configured_by'),
-            'classes': ('collapse',),
-        }),
-    )
-    # Exclude the raw client_secret from the form; use a custom field instead
-    exclude = ('client_secret',)
+    readonly_fields = ('configured_at', 'configured_by', 'client_secret_display', 'pim_client_secret_display')
 
     def get_fieldsets(self, request, obj=None):
-        """Override to include client_secret_display in the form."""
-        fieldsets = super().get_fieldsets(request, obj)
+        """Override to include PIM fields and secret display."""
+        oidc_fields = ['tenant_id', 'client_id']
+        pim_fields = ['pim_tenant_id', 'pim_client_id']
+
         if obj and obj.client_secret:
-            # Show masked display field when secret exists
-            fieldsets[0][1]['fields'] = ('tenant_id', 'client_id', 'client_secret_display', 'redirect_uri')
+            oidc_fields.append('client_secret_display')
         else:
-            # Show input field when no secret exists
-            fieldsets[0][1]['fields'] = ('tenant_id', 'client_id', 'client_secret', 'redirect_uri')
-        return fieldsets
+            oidc_fields.append('client_secret')
+        oidc_fields.append('redirect_uri')
+
+        if obj and obj.pim_client_secret:
+            pim_fields.append('pim_client_secret_display')
+        else:
+            pim_fields.append('pim_client_secret')
+
+        return (
+            ('OIDC Login App', {
+                'fields': oidc_fields,
+                'description': 'Used for user authentication. Needs only User.Read delegated permission.',
+            }),
+            ('PIM Management App', {
+                'fields': pim_fields,
+                'description': 'Separate app for role management. Needs RoleManagement.ReadWrite.Directory '
+                               'application permission. Leave blank to reuse OIDC app (dev only).',
+                'classes': ('wide',),
+            }),
+            ('Metadata', {
+                'fields': ('configured_at', 'configured_by'),
+                'classes': ('collapse',),
+            }),
+        )
+
+    # Exclude raw secret fields from the default form; use custom display fields
+    exclude = ('client_secret', 'pim_client_secret')
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        if 'client_secret' in form.base_fields:
-            form.base_fields['client_secret'].widget = admin.widgets.AdminTextInputWidget(
-                attrs={'type': 'password', 'autocomplete': 'off', 'placeholder': 'Enter new client secret'}
-            )
-            form.base_fields['client_secret'].required = False
-            form.base_fields['client_secret'].help_text = 'Leave blank to keep the existing encrypted secret'
+        for field_name in ('client_secret', 'pim_client_secret'):
+            if field_name in form.base_fields:
+                form.base_fields[field_name].widget = admin.widgets.AdminTextInputWidget(
+                    attrs={'type': 'password', 'autocomplete': 'off', 'placeholder': 'Enter new secret'}
+                )
+                form.base_fields[field_name].required = False
+                form.base_fields[field_name].help_text = 'Leave blank to keep the existing encrypted secret'
         return form
 
     def client_secret_display(self, obj):
-        """Display a masked version of the client secret."""
+        """Display a masked version of the OIDC client secret."""
         if obj and obj.client_secret:
             return format_html(
                 '<input type="password" class="vTextField" value="{}" readonly '
@@ -63,7 +78,19 @@ class EntraConfigAdmin(admin.ModelAdmin):
                 '••••••••••••••••'
             )
         return 'Not configured'
-    client_secret_display.short_description = 'Client Secret'
+    client_secret_display.short_description = 'OIDC Client Secret'
+
+    def pim_client_secret_display(self, obj):
+        """Display a masked version of the PIM client secret."""
+        if obj and obj.pim_client_secret:
+            return format_html(
+                '<input type="password" class="vTextField" value="{}" readonly '
+                'style="background:#f0f0f0; cursor:not-allowed;" '
+                'title="The PIM client secret is encrypted at rest and cannot be viewed">',
+                '••••••••••••••••'
+            )
+        return 'Not configured'
+    pim_client_secret_display.short_description = 'PIM Client Secret'
 
     def has_add_permission(self, request):
         return not EntraConfig.objects.exists()
@@ -82,12 +109,16 @@ class EntraConfigAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         obj.configured_by = request.user
-        # Only update the secret if a new value was provided
-        raw_secret = form.cleaned_data.get('client_secret', '')
-        if raw_secret:
-            obj.set_client_secret(raw_secret)
-        else:
-            # Keep the existing encrypted secret
-            existing = EntraConfig.get_config()
-            obj.client_secret = existing.client_secret
+        # Only update secrets if new values were provided
+        for secret_field in ('client_secret', 'pim_client_secret'):
+            raw_secret = form.cleaned_data.get(secret_field, '')
+            if raw_secret:
+                if secret_field == 'client_secret':
+                    obj.set_client_secret(raw_secret)
+                else:
+                    obj.set_pim_client_secret(raw_secret)
+            else:
+                # Keep the existing encrypted secret
+                existing = EntraConfig.get_config()
+                setattr(obj, secret_field, getattr(existing, secret_field))
         super().save_model(request, obj, form, change)
