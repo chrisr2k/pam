@@ -28,6 +28,10 @@
                     <form method="post">
                         {% csrf_token %}
 
+                        <h6 class="text-primary border-bottom pb-2 mb-3">
+                            <i class="bi bi-person-badge"></i> OIDC Login App
+                        </h6>
+
                         <div class="mb-3">
                             <label for="tenant_id" class="form-label">
                                 <i class="bi bi-building"></i> Tenant ID (Directory ID)
@@ -39,21 +43,21 @@
 
                         <div class="mb-3">
                             <label for="client_id" class="form-label">
-                                <i class="bi bi-key"></i> Client ID (Application ID)
+                                <i class="bi bi-key"></i> OIDC Client ID
                             </label>
                             <input type="text" class="form-control font-monospace" id="client_id" name="client_id"
                                    value="{{ config.client_id }}" placeholder="00000000-0000-0000-0000-000000000000">
-                            <div class="form-text">From App Registration → Overview</div>
+                            <div class="form-text">From OIDC login App Registration → Overview</div>
                         </div>
 
                         <div class="mb-3">
                             <label for="client_secret" class="form-label">
-                                <i class="bi bi-lock"></i> Client Secret
+                                <i class="bi bi-lock"></i> OIDC Client Secret
                             </label>
                             <div class="input-group">
                                 <input type="password" class="form-control font-monospace" id="client_secret" name="client_secret"
                                        value="" placeholder="{% if is_configured %}Leave blank to keep existing secret{% else %}Enter your client secret{% endif %}">
-                                <button class="btn btn-outline-secondary" type="button" onclick="toggleSecret()">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleSecret('client_secret', 'eye-icon')">
                                     <i class="bi bi-eye" id="eye-icon"></i>
                                 </button>
                             </div>
@@ -72,7 +76,65 @@
                             </label>
                             <input type="text" class="form-control font-monospace" id="redirect_uri" name="redirect_uri"
                                    value="{{ config.redirect_uri|default:callback_url }}" placeholder="{{ callback_url }}">
-                            <div class="form-text">Must match exactly what's registered in the app</div>
+                            <div class="form-text">Must match exactly what's registered in the OIDC app</div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h6 class="text-success border-bottom pb-2 mb-3">
+                            <i class="bi bi-shield-lock"></i> PIM Management App
+                            <span class="badge bg-info text-dark ms-1">Optional</span>
+                        </h6>
+                        <p class="text-muted small mb-3">
+                            For production, create a <strong>separate</strong> App Registration for PIM role management.
+                            This keeps the OIDC login app (needs only <code>User.Read</code>) isolated from the
+                            PIM app (needs <code>RoleManagement.ReadWrite.Directory</code>).
+                            Leave blank to reuse the OIDC app credentials (dev only).
+                        </p>
+
+                        <div class="mb-3">
+                            <label for="pim_tenant_id" class="form-label">
+                                <i class="bi bi-building"></i> PIM Tenant ID
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="pim_tenant_id" name="pim_tenant_id"
+                                   value="{{ config.pim_tenant_id }}" placeholder="Leave blank to use OIDC tenant">
+                            <div class="form-text">Only needed if PIM app is in a different tenant</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="pim_client_id" class="form-label">
+                                <i class="bi bi-key"></i> PIM Client ID
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="pim_client_id" name="pim_client_id"
+                                   value="{{ config.pim_client_id }}" placeholder="Leave blank to reuse OIDC app">
+                            <div class="form-text">From the PIM management App Registration</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="pim_client_secret" class="form-label">
+                                <i class="bi bi-lock"></i> PIM Client Secret
+                            </label>
+                            <div class="input-group">
+                                <input type="password" class="form-control font-monospace" id="pim_client_secret" name="pim_client_secret"
+                                       value="" placeholder="{% if config.pim_client_id %}Leave blank to keep existing{% else %}Optional - use cert or managed identity instead{% endif %}">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleSecret('pim_client_secret', 'pim-eye-icon')">
+                                    <i class="bi bi-eye" id="pim-eye-icon"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">
+                                For production, use <strong>Managed Identity</strong> (Azure) or
+                                <strong>certificate</strong> (OCI/on-prem) instead of a client secret.
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info py-2 mb-3">
+                            <i class="bi bi-info-circle-fill"></i>
+                            <strong>Auth method:</strong>
+                            {% if pim_auth_method %}
+                            <span class="badge bg-info">{{ pim_auth_method }}</span>
+                            {% else %}
+                            <span class="text-muted">Auto-detected at runtime</span>
+                            {% endif %}
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100">
@@ -103,24 +165,24 @@
                     <p class="text-muted">Follow these steps to configure Microsoft Entra ID for this PAM application.</p>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-primary rounded-pill me-2">1</span> Create an App Registration</h5>
+                        <h5><span class="badge bg-primary rounded-pill me-2">1</span> Create an OIDC App Registration (for login)</h5>
                         <div class="ms-4 ps-2">
                             <p>Go to the <a href="https://portal.azure.com/" target="_blank">Azure Portal</a> → <strong>Microsoft Entra ID</strong> → <strong>App registrations</strong> → <strong>New registration</strong>.</p>
                             <table class="table table-sm table-bordered">
-                                <tr><th>Name</th><td><code>PAM-App</code></td></tr>
+                                <tr><th>Name</th><td><code>PAM-OIDC-Login</code></td></tr>
                                 <tr><th>Supported account types</th><td><strong>Accounts in this organizational directory only</strong></td></tr>
                                 <tr><th>Redirect URI</th><td><strong>Web</strong> → <code class="user-select-all">{{ callback_url }}</code></td></tr>
                             </table>
-                            <p class="mb-0">Click <strong>Register</strong>. Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong> from the overview page.</p>
+                            <p class="mb-0">Click <strong>Register</strong>. Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>.</p>
                         </div>
                     </div>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-primary rounded-pill me-2">2</span> Create a Client Secret</h5>
+                        <h5><span class="badge bg-primary rounded-pill me-2">2</span> Create a Client Secret (for OIDC)</h5>
                         <div class="ms-4 ps-2">
-                            <p>In your app registration, go to <strong>Certificates & secrets</strong> → <strong>Client secrets</strong> → <strong>New client secret</strong>.</p>
+                            <p>In your OIDC app registration, go to <strong>Certificates & secrets</strong> → <strong>Client secrets</strong> → <strong>New client secret</strong>.</p>
                             <ul>
-                                <li>Give it a description (e.g. <code>PAM Secret</code>)</li>
+                                <li>Give it a description (e.g. <code>PAM OIDC Secret</code>)</li>
                                 <li>Set an expiry period (12 months recommended)</li>
                                 <li>Click <strong>Add</strong></li>
                             </ul>
@@ -132,38 +194,45 @@
                     </div>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-primary rounded-pill me-2">3</span> Configure API Permissions</h5>
+                        <h5><span class="badge bg-primary rounded-pill me-2">3</span> Configure OIDC API Permissions</h5>
                         <div class="ms-4 ps-2">
-                            <p>Go to <strong>API permissions</strong> → <strong>Add a permission</strong> → <strong>Microsoft Graph</strong>.</p>
-                            <h6 class="mt-3">Delegated permissions (for user sign-in):</h6>
+                            <p>Go to <strong>API permissions</strong> → <strong>Add a permission</strong> → <strong>Microsoft Graph</strong> → <strong>Delegated permissions</strong>.</p>
                             <ul>
                                 <li><code>openid</code></li>
                                 <li><code>profile</code></li>
                                 <li><code>email</code></li>
                                 <li><code>User.Read</code></li>
                             </ul>
-                            <h6 class="mt-3">Application permissions (for PIM automation):</h6>
-                            <ul>
-                                <li><code>RoleManagement.ReadWrite.Directory</code></li>
-                            </ul>
                             <p class="mb-0">Click <strong>Grant admin consent</strong> for your organization.</p>
                         </div>
                     </div>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-primary rounded-pill me-2">4</span> Enable PIM (Optional)</h5>
+                        <h5><span class="badge bg-success rounded-pill me-2">4</span> Create a PIM App Registration (for role management)</h5>
                         <div class="ms-4 ps-2">
-                            <p>To use PIM role activation, go to <strong>Entra ID</strong> → <strong>Identity Governance</strong> → <strong>Privileged Identity Management</strong> → <strong>Azure AD roles</strong>.</p>
+                            <p>Create a <strong>second</strong> App Registration for PIM role management:</p>
+                            <table class="table table-sm table-bordered">
+                                <tr><th>Name</th><td><code>PAM-Role-Manager</code></td></tr>
+                                <tr><th>Supported account types</th><td><strong>Accounts in this organizational directory only</strong></td></tr>
+                                <tr><th>Redirect URI</th><td><em>Not needed (client credentials flow)</em></td></tr>
+                            </table>
+                            <p>Go to <strong>API permissions</strong> → <strong>Add a permission</strong> → <strong>Microsoft Graph</strong> → <strong>Application permissions</strong>:</p>
                             <ul>
-                                <li>Select roles you want to manage</li>
-                                <li>Add eligible assignments for users</li>
-                                <li>Configure role settings (activation max duration, approval requirements, etc.)</li>
+                                <li><code>RoleManagement.ReadWrite.Directory</code></li>
                             </ul>
+                            <p>Click <strong>Grant admin consent</strong>.</p>
+
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-info-circle-fill"></i>
+                                <strong>Production:</strong> Use <strong>Managed Identity</strong> if running in Azure,
+                                or upload a <strong>certificate</strong> for OCI/on-prem deployments.
+                                Client secrets are acceptable for dev/test only.
+                            </div>
                         </div>
                     </div>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-primary rounded-pill me-2">5</span> Add Entra Roles in PAM</h5>
+                        <h5><span class="badge bg-success rounded-pill me-2">5</span> Add Entra Roles in PAM</h5>
                         <div class="ms-4 ps-2">
                             <p>After configuring Entra, add the roles you want to manage:</p>
                             <ol>
@@ -199,9 +268,9 @@
 </div>
 
 <script>
-function toggleSecret() {
-    const input = document.getElementById('client_secret');
-    const icon = document.getElementById('eye-icon');
+function toggleSecret(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
     if (input.type === 'password') {
         input.type = 'text';
         icon.className = 'bi bi-eye-slash';
