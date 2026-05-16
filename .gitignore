@@ -8,6 +8,7 @@ build/
 .venv/
 venv/
 *.db
+db.sqlite3
 staticfiles/
 media/
 deploy/terraform/terraform.tfvars
