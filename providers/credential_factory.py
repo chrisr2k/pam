@@ -63,6 +63,9 @@ class EntraCredentialFactory:
         """
         Detect the runtime environment and return the credential type to use.
 
+        Checks both OS environment variables AND Django settings (which may
+        contain secrets resolved from cloud vaults like OCI Vault).
+
         Returns:
             'managed_identity', 'certificate', 'client_secret', or 'none'
         """
@@ -79,8 +82,14 @@ class EntraCredentialFactory:
             self._credential_type = 'certificate'
             return self._credential_type
 
-        # 3. Check for base64-encoded certificate (OCI Vault or env var)
+        # 3. Check for base64-encoded certificate (env var, vault, or Django settings)
         cert_b64 = os.getenv('ENTRA_PIM_CERTIFICATE_B64', '')
+        if not cert_b64:
+            try:
+                from django.conf import settings
+                cert_b64 = getattr(settings, 'ENTRA_PIM_CERTIFICATE_B64', '') or ''
+            except Exception:
+                pass
         if cert_b64:
             logger.info('Base64 certificate configured - using ClientCertificateCredential')
             self._credential_type = 'certificate'
@@ -141,18 +150,31 @@ class EntraCredentialFactory:
                     logger.info(f'Created ClientCertificateCredential from file: {cert_path}')
                 else:
                     # Try OCI Vault or other secret store
-                    # The certificate data should be in the env var
+                    # The certificate data should be in the env var or Django settings
                     cert_b64 = os.getenv('ENTRA_PIM_CERTIFICATE_B64', '')
+                    if not cert_b64:
+                        try:
+                            from django.conf import settings
+                            cert_b64 = getattr(settings, 'ENTRA_PIM_CERTIFICATE_B64', '') or ''
+                        except Exception:
+                            pass
                     if cert_b64:
                         import base64
                         cert_data = base64.b64decode(cert_b64)
+                        # Also try to get cert password from Django settings if not in env
+                        if not cert_password:
+                            try:
+                                from django.conf import settings
+                                cert_password = getattr(settings, 'ENTRA_PIM_CERTIFICATE_PASSWORD', '') or ''
+                            except Exception:
+                                pass
                         self._credential = ClientCertificateCredential(
                             tenant_id=tenant_id,
                             client_id=client_id,
                             certificate_data=cert_data,
                             password=cert_password if cert_password else None,
                         )
-                        logger.info('Created ClientCertificateCredential from base64 env var')
+                        logger.info('Created ClientCertificateCredential from base64 env var/settings')
                     else:
                         logger.error('Certificate path not found and no base64 cert in env')
                         return None
