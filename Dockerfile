@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Ensure entrypoint and shell scripts are executable
+RUN chmod +x /app/entrypoint.sh /app/encrypt-env.sh
+
 # Collect static files
 RUN python manage.py collectstatic --noinput
 
