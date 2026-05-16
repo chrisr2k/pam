@@ -79,10 +79,10 @@ class EntraCredentialFactory:
             self._credential_type = 'certificate'
             return self._credential_type
 
-        # 3. Check for certificate in OCI Vault (OCI deployment)
-        oci_cert_secret = os.getenv('ENTRA_PIM_CERT_OCI_SECRET', '')
-        if oci_cert_secret:
-            logger.info('OCI Vault certificate configured - using ClientCertificateCredential')
+        # 3. Check for base64-encoded certificate (OCI Vault or env var)
+        cert_b64 = os.getenv('ENTRA_PIM_CERTIFICATE_B64', '')
+        if cert_b64:
+            logger.info('Base64 certificate configured - using ClientCertificateCredential')
             self._credential_type = 'certificate'
             return self._credential_type
 
