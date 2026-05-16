@@ -131,7 +131,10 @@ class EntraCredentialFactory:
                 logger.info('Created ManagedIdentityCredential')
 
             elif cred_type == 'certificate':
-                from azure.identity import ClientCertificateCredential
+                try:
+                    from azure.identity import ClientCertificateCredential
+                except ImportError:
+                    from azure.identity import CertificateCredential as ClientCertificateCredential
 
                 cert_path = os.getenv('ENTRA_PIM_CERTIFICATE_PATH', '')
                 cert_password = os.getenv('ENTRA_PIM_CERTIFICATE_PASSWORD', '')
