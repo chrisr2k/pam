@@ -1,8 +1,26 @@
 # PAM Deployment Guide
 
-This directory contains everything needed to deploy the Privileged Access Manager to AWS ECS Fargate.
+This directory contains everything needed to deploy the Privileged Access Manager.
 
-## Architecture
+## Supported Platforms
+
+The PAM app can run on **any cloud** (Azure, AWS, GCP, OCI) or **on-premises**. It auto-detects the cloud environment and fetches secrets from the appropriate secrets store.
+
+| Cloud | Secrets Store | Auth Method |
+|-------|--------------|-------------|
+| **Azure** | Key Vault | Managed Identity |
+| **AWS** | Secrets Manager | ECS task role / instance profile |
+| **GCP** | Secret Manager | Workload Identity / GCE SA |
+| **OCI** | Vault | Instance principal / OKE workload identity |
+| **Local** | `.env` file | Environment variables |
+
+Override auto-detection: `PAM_SECRETS_BACKEND=azure|aws|gcp|oci|local`
+
+---
+
+## AWS ECS Fargate Deployment
+
+### Architecture
 
 ```
 Internet → ALB (HTTPS) → ECS Fargate (web x2) → RDS PostgreSQL
@@ -12,7 +30,7 @@ Internet → ALB (HTTPS) → ECS Fargate (web x2) → RDS PostgreSQL
                               ECS Fargate (Celery Worker)
 ```
 
-## Prerequisites
+### Prerequisites
 
 1. **AWS Account** with:
    - VPC with public and private subnets
@@ -33,9 +51,9 @@ Internet → ALB (HTTPS) → ECS Fargate (web x2) → RDS PostgreSQL
    - AWS CLI configured with credentials
    - Terraform (or OpenTofu)
 
-## Deployment Steps
+### Deployment Steps
 
-### 1. Store Secrets in AWS Secrets Manager
+#### 1. Store Secrets in AWS Secrets Manager
 
 ```bash
 export DJANGO_SECRET_KEY="your-random-secret-key"
@@ -44,6 +62,7 @@ export REDIS_URL="redis://redis-host:6379/0"
 export ENTRA_TENANT_ID="your-tenant-id"
 export ENTRA_CLIENT_ID="your-client-id"
 export ENTRA_CLIENT_SECRET="your-client-secret"
+export ENTRA_PIM_CLIENT_SECRET="your-pim-client-secret"
 export AWS_ACCESS_KEY_ID="your-aws-key"
 export AWS_SECRET_ACCESS_KEY="your-aws-secret"
 export AWS_SSO_INSTANCE_ARN="arn:aws:sso:::instance/ssoins-xxxxx"

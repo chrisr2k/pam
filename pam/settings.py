@@ -1,5 +1,6 @@
 import os
 import re
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -10,9 +11,17 @@ if env_path.exists():
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'insecure-dev-key-change-in-production')
+# ── Multi-cloud secrets resolver ──────────────────────────────────────────
+# Sensitive values (API keys, passwords, certs) are fetched from the cloud
+# secrets store (Azure Key Vault, AWS Secrets Manager, GCP Secret Manager,
+# OCI Vault) when running in a cloud environment. Falls back to .env / env
+# vars for local development.
+from pam.secrets_resolver import get_secret, detect_cloud  # noqa: E402
+
+CLOUD_ENVIRONMENT = detect_cloud()
+
+SECRET_KEY = get_secret('DJANGO_SECRET_KEY', 'insecure-dev-key-change-in-production')
 if SECRET_KEY == 'insecure-dev-key-change-in-production':
-    import warnings
     warnings.warn(
         'DJANGO_SECRET_KEY is set to the insecure default! '
         'Set a secure random key in production.',
@@ -174,7 +183,7 @@ CELERY_TIMEZONE = 'UTC'
 # Entra ID (Azure AD) OIDC Settings (for user login)
 ENTRA_TENANT_ID = os.getenv('ENTRA_TENANT_ID', '')
 ENTRA_CLIENT_ID = os.getenv('ENTRA_CLIENT_ID', '')
-ENTRA_CLIENT_SECRET = os.getenv('ENTRA_CLIENT_SECRET', '')
+ENTRA_CLIENT_SECRET = get_secret('ENTRA_CLIENT_SECRET', '')
 ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
 ENTRA_SCOPES = ['User.Read']
 
@@ -183,19 +192,19 @@ ENTRA_SCOPES = ['User.Read']
 # If not set, falls back to the OIDC app credentials (not recommended for production).
 ENTRA_PIM_TENANT_ID = os.getenv('ENTRA_PIM_TENANT_ID', '')
 ENTRA_PIM_CLIENT_ID = os.getenv('ENTRA_PIM_CLIENT_ID', '')
-ENTRA_PIM_CLIENT_SECRET = os.getenv('ENTRA_PIM_CLIENT_SECRET', '')
+ENTRA_PIM_CLIENT_SECRET = get_secret('ENTRA_PIM_CLIENT_SECRET', '')
 
 # Certificate-based auth for PIM (alternative to client secret)
 # Path to a PFX/PEM certificate file, or base64-encoded cert data
 ENTRA_PIM_CERTIFICATE_PATH = os.getenv('ENTRA_PIM_CERTIFICATE_PATH', '')
 ENTRA_PIM_CERTIFICATE_PASSWORD = os.getenv('ENTRA_PIM_CERTIFICATE_PASSWORD', '')
-ENTRA_PIM_CERTIFICATE_B64 = os.getenv('ENTRA_PIM_CERTIFICATE_B64', '')
+ENTRA_PIM_CERTIFICATE_B64 = get_secret('ENTRA_PIM_CERTIFICATE_B64', '')
 
 # AWS Settings
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
-AWS_SSO_INSTANCE_ARN = os.getenv('AWS_SSO_INSTANCE_ARN', '')
+AWS_ACCESS_KEY_ID = get_secret('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = get_secret('AWS_SECRET_ACCESS_KEY', '')
+AWS_SSO_INSTANCE_ARN = get_secret('AWS_SSO_INSTANCE_ARN', '')
 
 # PAM Settings
 PAM_DEFAULT_MAX_HOURS = int(os.getenv('PAM_DEFAULT_MAX_HOURS', '8'))
