@@ -19,19 +19,23 @@ class EntraOIDCBackend(BaseBackend):
     """
 
     def _get_entra_credentials(self):
-        """Get Entra credentials from database config or settings."""
+        """Get Entra credentials from env var/vault first, then fall back to database.
+
+        Env var / vault secrets take precedence over database-stored config.
+        This allows OCI Vault / AWS Secrets Manager to override stale DB values.
+        """
+        if all([settings.ENTRA_TENANT_ID, settings.ENTRA_CLIENT_ID, settings.ENTRA_CLIENT_SECRET]):
+            return {
+                'tenant_id': settings.ENTRA_TENANT_ID,
+                'client_id': settings.ENTRA_CLIENT_ID,
+                'client_secret': settings.ENTRA_CLIENT_SECRET,
+            }
         db_config = EntraConfig.get_config()
         if db_config.is_configured():
             return {
                 'tenant_id': db_config.tenant_id,
                 'client_id': db_config.client_id,
                 'client_secret': db_config.get_client_secret(),
-            }
-        if all([settings.ENTRA_TENANT_ID, settings.ENTRA_CLIENT_ID, settings.ENTRA_CLIENT_SECRET]):
-            return {
-                'tenant_id': settings.ENTRA_TENANT_ID,
-                'client_id': settings.ENTRA_CLIENT_ID,
-                'client_secret': settings.ENTRA_CLIENT_SECRET,
             }
         return None
 

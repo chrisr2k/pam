@@ -30,13 +30,17 @@ class LoginView(View):
     """Redirect to Entra ID OIDC login."""
 
     def _get_entra_config(self):
-        """Get Entra config from database or fall back to settings."""
+        """Get Entra config from env var/vault first, then fall back to database.
+
+        Env var / vault secrets take precedence over database-stored config.
+        This allows OCI Vault / AWS Secrets Manager to override stale DB values.
+        """
+        if all([settings.ENTRA_TENANT_ID, settings.ENTRA_CLIENT_ID, settings.ENTRA_CLIENT_SECRET]):
+            return settings
+        # Fall back to database config
         db_config = EntraConfig.get_config()
         if db_config.is_configured():
             return db_config
-        # Fall back to settings from .env
-        if all([settings.ENTRA_TENANT_ID, settings.ENTRA_CLIENT_ID, settings.ENTRA_CLIENT_SECRET]):
-            return settings
         return None
 
     def get(self, request):
