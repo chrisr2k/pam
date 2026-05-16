@@ -187,3 +187,4 @@ AWS_SSO_INSTANCE_ARN = os.getenv('AWS_SSO_INSTANCE_ARN', '')
 # PAM Settings
 PAM_DEFAULT_MAX_HOURS = int(os.getenv('PAM_DEFAULT_MAX_HOURS', '8'))
 PAM_NOTIFICATION_EMAIL_FROM = os.getenv('PAM_NOTIFICATION_EMAIL_FROM', 'noreply@pam.local')
+PAM_BASE_URL = os.getenv('PAM_BASE_URL', '').rstrip('/')

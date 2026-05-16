@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 def _build_request_url(request_obj):
     """Build an absolute URL to the request detail page."""
-    from django.contrib.sites.shortcuts import get_current_site
-    # Fall back to a relative path if we can't determine the domain
+    from django.conf import settings
     try:
         path = reverse('requests:detail', kwargs={'pk': request_obj.pk})
-        return path  # Relative URL is fine for most use cases
+        base_url = getattr(settings, 'PAM_BASE_URL', '').rstrip('/')
+        if base_url:
+            return f'{base_url}{path}'
+        return path
     except Exception:
         return f'/requests/{request_obj.pk}/'
 
