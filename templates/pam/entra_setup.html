@@ -221,18 +221,77 @@
                                 <li><code>RoleManagement.ReadWrite.Directory</code></li>
                             </ul>
                             <p>Click <strong>Grant admin consent</strong>.</p>
+                        </div>
+                    </div>
 
-                            <div class="alert alert-info py-2 mb-0">
-                                <i class="bi bi-info-circle-fill"></i>
-                                <strong>Production:</strong> Use <strong>Managed Identity</strong> if running in Azure,
-                                or upload a <strong>certificate</strong> for OCI/on-prem deployments.
-                                Client secrets are acceptable for dev/test only.
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-success rounded-pill me-2">5</span> Choose PIM Authentication Method</h5>
+                        <div class="ms-4 ps-2">
+                            <p>The credential factory auto-detects which auth method to use. Configure one of the following:</p>
+
+                            <div class="card mb-3 border-info">
+                                <div class="card-header bg-info text-white py-2">
+                                    <strong>Option A: Azure Managed Identity</strong>
+                                    <span class="badge bg-light text-info ms-2">Best for Azure</span>
+                                </div>
+                                <div class="card-body py-2 small">
+                                    <p class="mb-1">If running in Azure (App Service, VM, Functions), <strong>no configuration needed</strong>.</p>
+                                    <ol class="mb-0">
+                                        <li>Assign a <strong>User-assigned Managed Identity</strong> to your Azure resource</li>
+                                        <li>Set the managed identity's <strong>Client ID</strong> as the PIM Client ID above</li>
+                                        <li>Grant it <code>RoleManagement.ReadWrite.Directory</code> API permission</li>
+                                    </ol>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3 border-success">
+                                <div class="card-header bg-success text-white py-2">
+                                    <strong>Option B: Certificate-based Auth</strong>
+                                    <span class="badge bg-light text-success ms-2">Best for OCI / On-Prem</span>
+                                </div>
+                                <div class="card-body py-2 small">
+                                    <p class="mb-1">Upload a certificate to your PIM app registration, then configure via <code>.env</code>:</p>
+                                    <div class="bg-dark text-light p-2 rounded mb-2 font-monospace small">
+                                        # From a file on disk<br>
+                                        ENTRA_PIM_CERTIFICATE_PATH=/path/to/cert.pfx<br>
+                                        ENTRA_PIM_CERTIFICATE_PASSWORD=your-password<br><br>
+                                        # OR base64-encoded (no file needed)<br>
+                                        ENTRA_PIM_CERTIFICATE_B64=<base64-pfx-data><br>
+                                        ENTRA_PIM_CERTIFICATE_PASSWORD=your-password
+                                    </div>
+                                    <p class="mb-1">Generate a certificate:</p>
+                                    <div class="bg-dark text-light p-2 rounded mb-0 font-monospace small">
+                                        openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes<br>
+                                        openssl pkcs12 -export -out cert.pfx -inkey key.pem -in cert.pem -passout pass:your-password<br>
+                                        base64 -w0 cert.pfx  # for ENTRA_PIM_CERTIFICATE_B64
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card border-warning">
+                                <div class="card-header bg-warning text-dark py-2">
+                                    <strong>Option C: Client Secret</strong>
+                                    <span class="badge bg-light text-warning ms-2">Dev Only</span>
+                                </div>
+                                <div class="card-body py-2 small">
+                                    <p class="mb-1">Simplest option for development. Create a client secret in the PIM app registration and enter it in the form above.</p>
+                                    <div class="alert alert-warning py-1 mb-0 small">
+                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                        <strong>Not recommended for production.</strong> Use Managed Identity or a certificate instead.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-2 small text-muted">
+                                <i class="bi bi-arrow-right-circle"></i>
+                                <strong>Detection order:</strong> Azure Managed Identity → Certificate → Client Secret.
+                                After configuring, restart: <code class="user-select-all">docker compose restart web</code>
                             </div>
                         </div>
                     </div>
 
                     <div class="step mb-4">
-                        <h5><span class="badge bg-success rounded-pill me-2">5</span> Add Entra Roles in PAM</h5>
+                        <h5><span class="badge bg-success rounded-pill me-2">6</span> Add Entra Roles in PAM</h5>
                         <div class="ms-4 ps-2">
                             <p>After configuring Entra, add the roles you want to manage:</p>
                             <ol>
