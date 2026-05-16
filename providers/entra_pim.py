@@ -55,11 +55,43 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
         self._client_secret = None
 
     def _load_config(self):
-        """Load PIM-specific Entra config from DB or settings."""
+        """Load PIM-specific Entra config from vault/env first, then DB.
+
+        Precedence (highest to lowest):
+        1. Cloud vault secrets (OCI Vault / AWS Secrets Manager / Azure Key Vault)
+        2. Environment variables
+        3. Database-stored config
+        4. OIDC app credentials (fallback)
+        """
         if self._client_id and self._tenant_id:
             return
 
-        # First try: PIM-specific config from database
+        # First try: PIM-specific secrets from cloud vault (takes precedence)
+        from pam.secrets_resolver import get_secret
+        vault_pim_secret = get_secret('ENTRA_PIM_CLIENT_SECRET', '')
+        vault_pim_cert_b64 = get_secret('ENTRA_PIM_CERTIFICATE_B64', '')
+        vault_pim_cert_password = get_secret('ENTRA_PIM_CERTIFICATE_PASSWORD', '')
+
+        # Check if vault has PIM credentials (either secret or cert)
+        has_vault_pim_creds = bool(vault_pim_secret or vault_pim_cert_b64)
+
+        # Try env vars for client_id/tenant_id (these aren't secrets, just config)
+        pim_tenant = settings.ENTRA_PIM_TENANT_ID or settings.ENTRA_TENANT_ID
+        pim_client_id = settings.ENTRA_PIM_CLIENT_ID or settings.ENTRA_CLIENT_ID
+        pim_client_secret = vault_pim_secret or settings.ENTRA_PIM_CLIENT_SECRET or settings.ENTRA_CLIENT_SECRET
+
+        env_type = self._factory._detect_environment()
+        if pim_client_id and (pim_client_secret or env_type in ('managed_identity', 'certificate')):
+            self._tenant_id = pim_tenant
+            self._client_id = pim_client_id
+            self._client_secret = pim_client_secret
+            logger.info(
+                f'Loaded PIM config from settings/vault: '
+                f'tenant={pim_tenant} client={pim_client_id[:8]}...'
+            )
+            return
+
+        # Second try: PIM-specific config from database
         try:
             from accounts.models import EntraConfig
             db_config = EntraConfig.get_config()
@@ -69,7 +101,8 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
                 pim_client_id = getattr(db_config, 'pim_client_id', '') or db_config.client_id
                 pim_client_secret = getattr(db_config, 'pim_client_secret', '')
 
-                if pim_client_id and pim_client_secret:
+                # Accept DB config if we have client_id AND (secret OR cert-based auth)
+                if pim_client_id and (pim_client_secret or env_type in ('managed_identity', 'certificate')):
                     self._tenant_id = pim_tenant
                     self._client_id = pim_client_id
                     self._client_secret = pim_client_secret
@@ -80,22 +113,6 @@ class EntraPIMProvider(BasePrivilegedAccessProvider):
                     return
         except Exception as e:
             logger.warning(f'Failed to load PIM config from DB: {e}')
-
-        # Second try: PIM-specific settings from environment
-        pim_tenant = settings.ENTRA_PIM_TENANT_ID or settings.ENTRA_TENANT_ID
-        pim_client_id = settings.ENTRA_PIM_CLIENT_ID or settings.ENTRA_CLIENT_ID
-        pim_client_secret = settings.ENTRA_PIM_CLIENT_SECRET or settings.ENTRA_CLIENT_SECRET
-
-        if pim_client_id and (pim_client_secret or
-                              self._factory._detect_environment() in ('managed_identity', 'certificate')):
-            self._tenant_id = pim_tenant
-            self._client_id = pim_client_id
-            self._client_secret = pim_client_secret
-            logger.info(
-                f'Loaded PIM config from settings: '
-                f'tenant={pim_tenant} client={pim_client_id[:8]}...'
-            )
-            return
 
         # Third fallback: use OIDC app credentials (not ideal but works for dev)
         self._tenant_id = settings.ENTRA_TENANT_ID
