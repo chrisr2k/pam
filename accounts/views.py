@@ -167,9 +167,14 @@ class EntraSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def get(self, request):
         config = EntraConfig.get_config()
+        # Detect PIM auth method
+        from providers.credential_factory import EntraCredentialFactory
+        factory = EntraCredentialFactory()
+        pim_auth_method = factory._detect_environment()
         return render(request, 'pam/entra_setup.html', {
             'config': config,
             'is_configured': config.is_configured(),
+            'pim_auth_method': pim_auth_method,
             'callback_url': build_redirect_uri(request, '/accounts/callback/'),
         })
 
@@ -182,6 +187,14 @@ class EntraSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
             config.set_client_secret(raw_secret)
         # If no new secret provided, keep the existing encrypted one
         config.redirect_uri = request.POST.get('redirect_uri', '').strip()
+
+        # PIM-specific fields
+        config.pim_tenant_id = request.POST.get('pim_tenant_id', '').strip()
+        config.pim_client_id = request.POST.get('pim_client_id', '').strip()
+        raw_pim_secret = request.POST.get('pim_client_secret', '').strip()
+        if raw_pim_secret:
+            config.set_pim_client_secret(raw_pim_secret)
+
         config.configured_by = request.user
         config.save()
 
