@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from pam.admin import admin_site
+from pam.admin_site import admin_site
 from .models import AuditLog
 
 

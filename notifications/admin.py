@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import reverse
 
-from pam.admin import admin_site
+from pam.admin_site import admin_site
 from .models import NotificationConfig
 
 
