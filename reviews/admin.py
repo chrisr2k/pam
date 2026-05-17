@@ -1,4 +1,6 @@
 from django.contrib import admin
+
+from pam.admin import admin_site
 from .models import AccessReview, ReviewEntry
 
 
@@ -8,7 +10,7 @@ class ReviewEntryInline(admin.TabularInline):
     readonly_fields = ('access_request', 'decision', 'reviewed_by', 'reviewed_at')
 
 
-@admin.register(AccessReview)
+@admin_site.register(AccessReview)
 class AccessReviewAdmin(admin.ModelAdmin):
     list_display = ('name', 'status', 'created_by', 'due_date', 'created_at')
     list_filter = ('status',)
@@ -17,7 +19,7 @@ class AccessReviewAdmin(admin.ModelAdmin):
     inlines = [ReviewEntryInline]
 
 
-@admin.register(ReviewEntry)
+@admin_site.register(ReviewEntry)
 class ReviewEntryAdmin(admin.ModelAdmin):
     list_display = ('review', 'access_request', 'decision', 'reviewed_by', 'reviewed_at')
     list_filter = ('decision',)

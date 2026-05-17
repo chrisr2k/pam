@@ -3,10 +3,12 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.html import format_html
+
+from pam.admin import admin_site
 from .models import User, EntraConfig
 
 
-@admin.register(User)
+@admin_site.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'email', 'role', 'entra_object_id', 'is_staff', 'is_active')
     list_filter = ('role', 'is_staff', 'is_active', 'groups')
@@ -16,7 +18,7 @@ class UserAdmin(BaseUserAdmin):
     )
 
 
-@admin.register(EntraConfig)
+@admin_site.register(EntraConfig)
 class EntraConfigAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'client_id', 'configured_at', 'configured_by')
     readonly_fields = ('configured_at', 'configured_by', 'client_secret_display', 'pim_client_secret_display')

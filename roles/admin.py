@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
-from django.utils.safestring import mark_safe
+
+from pam.admin import admin_site
 from .models import PrivilegedRole
 
 
@@ -49,7 +50,7 @@ class PrivilegedRoleForm(forms.ModelForm):
         return cleaned_data
 
 
-@admin.register(PrivilegedRole)
+@admin_site.register(PrivilegedRole)
 class PrivilegedRoleAdmin(admin.ModelAdmin):
     form = PrivilegedRoleForm
     list_display = ('name', 'provider', 'requires_approval', 'max_duration_minutes', 'is_active')

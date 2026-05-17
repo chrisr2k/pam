@@ -1,10 +1,12 @@
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import reverse
+
+from pam.admin import admin_site
 from .models import NotificationConfig
 
 
-@admin.register(NotificationConfig)
+@admin_site.register(NotificationConfig)
 class NotificationConfigAdmin(admin.ModelAdmin):
     list_display = ('email_enabled', 'slack_enabled', 'teams_enabled', 'configured_at', 'configured_by')
     readonly_fields = ('configured_at', 'configured_by')
