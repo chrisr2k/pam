@@ -14,10 +14,11 @@
     #
     # If PAM_ADMIN_ALLOWED_IPS is not set, admin access is unrestricted
     # (but still requires the PAM Admin role in Django).
+    # The default 0.0.0.0/32 ensures Caddy doesn't error on an empty env var.
     @admin path /pam-admin* /pam-admin/*
     @admin_blocked {
         path /pam-admin* /pam-admin/*
-        not remote_ip {env.PAM_ADMIN_ALLOWED_IPS}
+        not remote_ip {env.PAM_ADMIN_ALLOWED_IPS:0.0.0.0/32}
     }
     respond @admin_blocked "Administrative access restricted" 403
 }
