@@ -42,10 +42,23 @@ class RequestCreateView(LoginRequiredMixin, CreateView):
     template_name = 'pam/request_form.html'
     fields = ['role', 'justification', 'requested_duration_minutes']
 
+    def get_initial(self):
+        """Pre-select role if ?role= query param is provided."""
+        initial = super().get_initial()
+        role_id = self.request.GET.get('role')
+        if role_id:
+            try:
+                role = PrivilegedRole.objects.get(pk=role_id, is_active=True)
+                initial['role'] = role
+            except (PrivilegedRole.DoesNotExist, ValueError):
+                pass
+        return initial
+
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
         form.fields['role'].queryset = PrivilegedRole.objects.filter(is_active=True)
         return form
+
 
     def form_valid(self, form):
         form.instance.requester = self.request.user
