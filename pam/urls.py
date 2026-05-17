@@ -3,7 +3,7 @@ import os
 from django.urls import path, include
 from django.views.generic import RedirectView
 
-from .admin import admin_site
+from .admin_site import admin_site
 
 # Admin URL is configurable via env var for security-through-obscurity.
 # Default: /pam-admin/ (instead of the well-known /admin/)
