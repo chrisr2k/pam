@@ -8,12 +8,11 @@ logger = logging.getLogger(__name__)
 def provision_access_sync(request_id: int):
     """
     Synchronous version of provision_access for when Celery is not available.
-    Also schedules deprovisioning by creating a delayed thread.
+    Schedules deprovisioning via Celery ETA for reliability.
     """
     from access_requests.models import AccessRequest
     from providers.aws_identity_center import AWSIdentityCenterProvider
     from providers.entra_pim import EntraPIMProvider
-    import threading
 
     try:
         access_request = AccessRequest.objects.select_related('requester', 'role').get(id=request_id)
@@ -74,25 +73,21 @@ def provision_access_sync(request_id: int):
                 recipients=[access_request.requester.email],
             )
 
-            # Schedule deprovisioning via a background thread
+            # Schedule deprovisioning via Celery ETA for reliability.
+            # Falls back to the periodic check_expired_sessions task if Celery is down.
             expires_at = access_request.expires_at
             if expires_at:
-                delay_seconds = (expires_at - timezone.now()).total_seconds()
-                if delay_seconds > 0:
-                    def _delayed_deprovision():
-                        import time
-                        time.sleep(delay_seconds)
-                        try:
-                            # Re-fetch to get latest state
-                            req = AccessRequest.objects.get(id=request_id)
-                            if req.status in (AccessRequest.Status.PROVISIONED, AccessRequest.Status.ACTIVE):
-                                deprovision_access_sync(request_id)
-                        except Exception:
-                            logger.exception(f'Error in delayed deprovision for request {request_id}')
-
-                    thread = threading.Thread(target=_delayed_deprovision, daemon=True)
-                    thread.start()
-                    logger.info(f'Scheduled deprovisioning for request {request_id} in {delay_seconds:.0f}s')
+                try:
+                    schedule_deprovision.apply_async(
+                        args=[request_id],
+                        eta=expires_at,
+                    )
+                    logger.info(f'Scheduled deprovisioning for request {request_id} at {expires_at}')
+                except Exception:
+                    logger.exception(
+                        f'Failed to schedule Celery deprovision for request {request_id}, '
+                        f'will rely on periodic check_expired_sessions task'
+                    )
         else:
             logger.error(f'Provisioning failed for request {request_id}: {result.get("error")}')
             access_request.mark_failed()
@@ -100,6 +95,7 @@ def provision_access_sync(request_id: int):
     except Exception as e:
         logger.exception(f'Unexpected error provisioning request {request_id}: {e}')
         access_request.mark_failed()
+
 
 
 def deprovision_access_sync(request_id: int):

@@ -181,6 +181,19 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
+# Celery Beat schedule — runs every 5 minutes as a safety net to catch
+# any expired sessions that weren't deprovisioned by the ETA-based scheduler.
+# This ensures sessions are always cleaned up even if the ETA task is lost
+# (e.g., due to a worker restart).
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-sessions': {
+        'task': 'tasks.provisioning.check_expired_sessions',
+        'schedule': 300.0,  # every 5 minutes
+        'options': {'expires': 280.0},  # drop if previous run still in progress
+    },
+}
+
+
 # Entra ID (Azure AD) OIDC Settings (for user login)
 ENTRA_TENANT_ID = os.getenv('ENTRA_TENANT_ID', '')
 ENTRA_CLIENT_ID = os.getenv('ENTRA_CLIENT_ID', '')
