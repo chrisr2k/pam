@@ -16,16 +16,24 @@ logger = logging.getLogger(__name__)
 
 
 def _build_request_url(request_obj):
-    """Build an absolute URL to the request detail page."""
+    """Build an absolute URL to the request detail page.
+
+    Uses PAM_BASE_URL from settings. If not set, falls back to
+    EXTERNAL_URL env var, then to a localhost default for development.
+    """
     from django.conf import settings
+    import os
     try:
         path = reverse('requests:detail', kwargs={'pk': request_obj.pk})
-        base_url = getattr(settings, 'PAM_BASE_URL', '').rstrip('/')
-        if base_url:
-            return f'{base_url}{path}'
-        return path
+        # Try PAM_BASE_URL first, then EXTERNAL_URL, then localhost default
+        base_url = (
+            getattr(settings, 'PAM_BASE_URL', '')
+            or os.getenv('EXTERNAL_URL', '')
+            or 'http://localhost:8080'
+        )
+        return f'{base_url.rstrip("/")}{path}'
     except Exception:
-        return f'/requests/{request_obj.pk}/'
+        return f'http://localhost:8080/requests/{request_obj.pk}/'
 
 
 def _format_datetime(dt):
