@@ -79,6 +79,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'audit.middleware.AuditMiddleware',
+    'pam.admin.AdminIPWhitelistMiddleware',
 ]
 
 ROOT_URLCONF = 'pam.urls'

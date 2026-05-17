@@ -5,20 +5,4 @@
     header /static/* {
         Cache-Control "public, max-age=31536000, immutable"
     }
-
-    # ── Admin panel protection ──────────────────────────────────────────────
-    # The admin URL is configurable via PAM_ADMIN_URL env var (default: pam-admin).
-    # IP whitelist: only allow admin access from trusted IPs/ranges.
-    # Set PAM_ADMIN_ALLOWED_IPS to a comma-separated list of IPs or CIDR ranges.
-    # Example: PAM_ADMIN_ALLOWED_IPS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-    #
-    # If PAM_ADMIN_ALLOWED_IPS is not set, admin access is unrestricted
-    # (but still requires the PAM Admin role in Django).
-    # The default 0.0.0.0/32 ensures Caddy doesn't error on an empty env var.
-    @admin path /pam-admin* /pam-admin/*
-    @admin_blocked {
-        path /pam-admin* /pam-admin/*
-        not remote_ip {env.PAM_ADMIN_ALLOWED_IPS:0.0.0.0/32}
-    }
-    respond @admin_blocked "Administrative access restricted" 403
 }
