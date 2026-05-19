@@ -112,6 +112,11 @@ class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
     def post(self, request, pk):
         access_request = get_object_or_404(AccessRequest, pk=pk, status=AccessRequest.Status.PENDING)
 
+        # Prevent self-approval
+        if request.user == access_request.requester:
+            messages.error(request, 'You cannot approve your own request.')
+            return redirect('requests:detail', pk=access_request.pk)
+
         # Verify the user is an approver for this specific role
         if request.user not in access_request.role.approvers.all():
             messages.error(request, 'You are not authorized to approve requests for this role.')
@@ -154,6 +159,7 @@ class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect('requests:detail', pk=access_request.pk)
 
 
+
 class DenyRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
     """Deny a pending access request."""
 
@@ -163,10 +169,16 @@ class DenyRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
     def post(self, request, pk):
         access_request = get_object_or_404(AccessRequest, pk=pk, status=AccessRequest.Status.PENDING)
 
+        # Prevent self-denial
+        if request.user == access_request.requester:
+            messages.error(request, 'You cannot deny your own request.')
+            return redirect('requests:detail', pk=access_request.pk)
+
         # Verify the user is an approver for this specific role
         if request.user not in access_request.role.approvers.all():
             messages.error(request, 'You are not authorized to deny requests for this role.')
             return redirect('requests:detail', pk=access_request.pk)
+
 
         reason = request.POST.get('reason', '')
         Approval.objects.create(

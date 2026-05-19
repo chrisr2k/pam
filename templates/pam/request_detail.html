@@ -82,7 +82,8 @@
 
     <div class="col-lg-4">
         <!-- Actions -->
-        {% if request_obj.status == 'PENDING' and user.is_approver and user in request_obj.role.approvers.all %}
+        {% if request_obj.status == 'PENDING' and user.is_approver and user in request_obj.role.approvers.all and user != request_obj.requester %}
+
         <div class="card mb-4">
             <div class="card-header">
                 <i class="bi bi-shield-check"></i> Actions
