@@ -37,6 +37,16 @@ class PrivilegedRole(models.Model):
         help_text='Entra ID role display name',
     )
 
+    # ABAC (Attribute-Based Access Control) via Entra ID directory attributes
+    abac_enabled = models.BooleanField(
+        default=False,
+        help_text='Use ABAC via Entra directory attributes instead of direct account assignments',
+    )
+    entra_attribute_name = models.CharField(
+        max_length=128, blank=True, default='',
+        help_text='Entra ID extension attribute name (e.g. extension_<appId>_awsAdminAccounts)',
+    )
+
     # Policy
     max_duration_minutes = models.PositiveIntegerField(
         default=480,  # 8 hours
@@ -50,6 +60,7 @@ class PrivilegedRole(models.Model):
         default=True,
         help_text='Whether this role is available for requests',
     )
+
     approvers = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         blank=True,

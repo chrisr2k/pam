@@ -38,7 +38,15 @@ def provision_access_sync(request_id: int):
         return
 
     try:
-        if role.provider == 'AWS':
+        if role.provider == 'AWS' and role.abac_enabled:
+            # ABAC path: update Entra directory attribute instead of account assignment
+            from providers.entra_abac import EntraABACProvider
+            provider = EntraABACProvider()
+            role_config = {
+                'attribute_name': role.entra_attribute_name,
+                'account_id': role.aws_account_id,
+            }
+        elif role.provider == 'AWS':
             provider = AWSIdentityCenterProvider()
             role_config = {
                 'permission_set_arn': role.aws_permission_set_arn,
@@ -98,6 +106,7 @@ def provision_access_sync(request_id: int):
 
 
 
+
 def deprovision_access_sync(request_id: int):
     """
     Synchronous version of deprovision_access for when Celery is not available.
@@ -125,15 +134,32 @@ def deprovision_access_sync(request_id: int):
         return
 
     try:
-        if role.provider == 'AWS':
+        if role.provider == 'AWS' and role.abac_enabled:
+            # ABAC deprovision: remove account ID from Entra directory attribute
+            from providers.entra_abac import EntraABACProvider
+            provider = EntraABACProvider()
+            user = access_request.requester
+            entra_oid = user.entra_object_id
+            if entra_oid and ':' in reference_id:
+                _, account_id = reference_id.split(':', 1)
+                success = provider.deprovision_access_for_user(
+                    user_entra_oid=entra_oid,
+                    attribute_name=role.entra_attribute_name,
+                    account_id=account_id,
+                )
+            else:
+                logger.error(f'Cannot ABAC deprovision: missing user OID or invalid reference_id={reference_id}')
+                success = False
+        elif role.provider == 'AWS':
             provider = AWSIdentityCenterProvider()
+            success = provider.deprovision_access(reference_id)
         elif role.provider == 'ENTRA':
             provider = EntraPIMProvider()
+            success = provider.deprovision_access(reference_id)
         else:
             logger.error(f'Unknown provider: {role.provider}')
             return
 
-        success = provider.deprovision_access(reference_id)
         if success:
             access_request.mark_expired()
             logger.info(f'Successfully deprovisioned access for request {request_id}')
@@ -142,6 +168,7 @@ def deprovision_access_sync(request_id: int):
 
     except Exception as e:
         logger.exception(f'Unexpected error deprovisioning request {request_id}: {e}')
+
 
 
 
@@ -179,7 +206,15 @@ def provision_access(self, request_id: int):
         return
 
     try:
-        if role.provider == 'AWS':
+        if role.provider == 'AWS' and role.abac_enabled:
+            # ABAC path: update Entra directory attribute instead of account assignment
+            from providers.entra_abac import EntraABACProvider
+            provider = EntraABACProvider()
+            role_config = {
+                'attribute_name': role.entra_attribute_name,
+                'account_id': role.aws_account_id,
+            }
+        elif role.provider == 'AWS':
             provider = AWSIdentityCenterProvider()
             role_config = {
                 'permission_set_arn': role.aws_permission_set_arn,
@@ -220,6 +255,7 @@ def provision_access(self, request_id: int):
         access_request.mark_failed()
 
 
+
 @shared_task
 def deprovision_access(request_id: int):
     """
@@ -248,15 +284,32 @@ def deprovision_access(request_id: int):
         return
 
     try:
-        if role.provider == 'AWS':
+        if role.provider == 'AWS' and role.abac_enabled:
+            # ABAC deprovision: remove account ID from Entra directory attribute
+            from providers.entra_abac import EntraABACProvider
+            provider = EntraABACProvider()
+            user = access_request.requester
+            entra_oid = user.entra_object_id
+            if entra_oid and ':' in reference_id:
+                _, account_id = reference_id.split(':', 1)
+                success = provider.deprovision_access_for_user(
+                    user_entra_oid=entra_oid,
+                    attribute_name=role.entra_attribute_name,
+                    account_id=account_id,
+                )
+            else:
+                logger.error(f'Cannot ABAC deprovision: missing user OID or invalid reference_id={reference_id}')
+                success = False
+        elif role.provider == 'AWS':
             provider = AWSIdentityCenterProvider()
+            success = provider.deprovision_access(reference_id)
         elif role.provider == 'ENTRA':
             provider = EntraPIMProvider()
+            success = provider.deprovision_access(reference_id)
         else:
             logger.error(f'Unknown provider: {role.provider}')
             return
 
-        success = provider.deprovision_access(reference_id)
         if success:
             access_request.mark_expired()
             logger.info(f'Successfully deprovisioned access for request {request_id}')
@@ -265,6 +318,7 @@ def deprovision_access(request_id: int):
 
     except Exception as e:
         logger.exception(f'Unexpected error deprovisioning request {request_id}: {e}')
+
 
 
 @shared_task

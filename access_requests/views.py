@@ -1,6 +1,6 @@
 import logging
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.shortcuts import redirect, get_object_or_404
+from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, DetailView, CreateView
@@ -152,9 +152,18 @@ class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
             recipients=[access_request.requester.email],
         )
 
-        # Provision synchronously (Celery will be used when broker is available)
+        # Provision access in the background.
+        # We use a thread so the redirect happens immediately and the user
+        # sees the detail page with "PROVISIONING" status. The live-updates
+        # JS will update the status when provisioning completes.
+        import threading
         from tasks.provisioning import provision_access_sync
-        provision_access_sync(access_request.id)
+        t = threading.Thread(
+            target=provision_access_sync,
+            args=(access_request.id,),
+            daemon=True,
+        )
+        t.start()
 
         return redirect('requests:detail', pk=access_request.pk)
 
@@ -332,6 +341,3 @@ class RevokeAccessView(LoginRequiredMixin, View):
         messages.success(request, f'Access to {access_request.role.name} has been revoked.')
         return redirect('requests:dashboard')
 
-
-# Import render at the bottom to avoid circular imports
-from django.shortcuts import render

@@ -1,4 +1,5 @@
 import logging
+import os
 
 from django.contrib.auth.models import AbstractUser
 from django.core.signing import Signer, BadSignature
@@ -191,3 +192,128 @@ class EntraConfig(models.Model):
     def get_config(cls):
         config, _ = cls.objects.get_or_create(pk=1)
         return config
+
+
+class AWSConfig(models.Model):
+    """Stores AWS Identity Center configuration in the database.
+
+    Supports multiple authentication methods (no long-lived secrets needed):
+      1. IAM Instance Profile (best for EC2/ECS)
+      2. IAM Roles Anywhere (best for on-prem/OCI)
+      3. AssumeRole (STS - role chaining)
+      4. IAM User access keys (dev only - fallback)
+
+    The auth method is auto-detected at runtime.
+    """
+
+    # ── SSO Instance ───────────────────────────────────────────────────────
+    sso_instance_arn = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='SSO Instance ARN',
+        help_text='AWS IAM Identity Center instance ARN. '
+                  'Leave blank to auto-discover if you have only one instance.',
+    )
+    region = models.CharField(
+        max_length=64, blank=True, default='us-east-1',
+        verbose_name='AWS Region',
+        help_text='AWS region where Identity Center is configured',
+    )
+
+    # ── AssumeRole (STS) - Best for cross-account / role chaining ──────────
+    role_arn = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='IAM Role ARN to Assume',
+        help_text='ARN of an IAM role with SSO Admin permissions. '
+                  'PAM will call STS AssumeRole to get temporary credentials. '
+                  'The role must trust PAM\'s current identity (instance profile, '
+                  'Roles Anywhere session, or IAM user).',
+    )
+    role_session_name = models.CharField(
+        max_length=128, blank=True, default='PAM-Session',
+        verbose_name='STS Role Session Name',
+        help_text='Session name for STS AssumeRole (appears in CloudTrail)',
+    )
+    external_id = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='STS External ID (optional)',
+        help_text='Required if the trust policy has an sts:ExternalId condition',
+    )
+
+    # ── IAM Roles Anywhere - Best for on-prem / OCI / non-AWS ──────────────
+    roles_anywhere_profile_arn = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='Roles Anywhere Profile ARN',
+        help_text='ARN of the IAM Roles Anywhere trust profile. '
+                  'Requires a certificate + private key configured via .env: '
+                  'AWS_ROLES_ANYWHERE_CERT_PATH and AWS_ROLES_ANYWHERE_KEY_PATH',
+    )
+    roles_anywhere_trust_arn = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='Roles Anywhere Trust Anchor ARN',
+        help_text='ARN of the IAM Roles Anywhere trust anchor',
+    )
+
+    # ── IAM User Access Keys (dev only - fallback) ─────────────────────────
+    access_key_id = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='IAM Access Key ID (dev only)',
+        help_text='Long-lived IAM user access key. Only use for development.',
+    )
+    secret_access_key = models.CharField(
+        max_length=256, blank=True, default='',
+        verbose_name='IAM Secret Access Key (dev only)',
+        help_text='Long-lived IAM user secret key. Only use for development.',
+    )
+
+    # ── Metadata ───────────────────────────────────────────────────────────
+    configured_at = models.DateTimeField(auto_now=True)
+    configured_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Configured by',
+    )
+
+    class Meta:
+        verbose_name = 'AWS Identity Center Configuration'
+        verbose_name_plural = 'AWS Identity Center Configuration'
+
+    def __str__(self):
+        return f'AWS Config: {self.sso_instance_arn or self.region or "Not configured"}'
+
+    def is_configured(self) -> bool:
+        """Check if any auth method is configured."""
+        return bool(
+            self.sso_instance_arn
+            or self.role_arn
+            or self.roles_anywhere_profile_arn
+            or self.access_key_id
+        )
+
+    def get_auth_method(self) -> str:
+        """Auto-detect which auth method is configured.
+
+        Detection order:
+          1. IAM Roles Anywhere (profile ARN or cert files in env)
+          2. STS AssumeRole (role_arn is set)
+          3. IAM User keys (access_key_id is set)
+          4. IAM Instance Profile (default when running on AWS)
+        """
+        # Check for Roles Anywhere: either profile ARN in DB or cert files in env
+        cert_path = os.getenv('AWS_ROLES_ANYWHERE_CERT_PATH', '')
+        key_path = os.getenv('AWS_ROLES_ANYWHERE_KEY_PATH', '')
+        if self.roles_anywhere_profile_arn or (
+            cert_path and key_path and os.path.exists(cert_path) and os.path.exists(key_path)
+        ):
+            return 'roles_anywhere'
+        if self.role_arn:
+            return 'assume_role'
+        if self.access_key_id:
+            return 'iam_user'
+        # Instance profile is the default when running on AWS
+        return 'instance_profile'
+
+    @classmethod
+    def get_config(cls):
+        config, _ = cls.objects.get_or_create(pk=1)
+        return config
+
+

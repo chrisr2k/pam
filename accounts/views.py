@@ -13,7 +13,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 import msal
 
-from .models import EntraConfig
+from .models import EntraConfig, AWSConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -139,18 +140,40 @@ class OIDCCallbackView(View):
             })
 
 
+class LocalLoginView(View):
+    """Handle local username/password login (non-OIDC)."""
+
+    def post(self, request):
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            next_url = request.POST.get('next', settings.LOGIN_REDIRECT_URL)
+            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts=None):
+                next_url = settings.LOGIN_REDIRECT_URL
+            return redirect(next_url)
+        return render(request, 'pam/login.html', {
+            'oidc_disabled': True,
+            'error': 'Invalid username or password.',
+        })
+
+
 class LogoutView(View):
-    """Log out the user and redirect to Entra ID logout."""
+    """Log out the user and redirect to Entra ID logout or home."""
 
     def get(self, request):
         config = EntraConfig.get_config()
         logout(request)
-        # Redirect to Entra ID logout endpoint
-        logout_url = (
-            f'https://login.microsoftonline.com/{config.tenant_id or settings.ENTRA_TENANT_ID}'
-            f'/oauth2/v2.0/logout?post_logout_redirect_uri='
-            f'{build_redirect_uri(request, "/")}'
-        )
+        tenant_id = config.tenant_id or settings.ENTRA_TENANT_ID
+        if tenant_id:
+            logout_url = (
+                f'https://login.microsoftonline.com/{tenant_id}'
+                f'/oauth2/v2.0/logout?post_logout_redirect_uri='
+                f'{build_redirect_uri(request, "/")}'
+            )
+        else:
+            logout_url = '/'
         return redirect(logout_url)
 
 
@@ -208,3 +231,41 @@ class EntraSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.warning(request, 'Configuration saved but is incomplete. Fill in all fields to enable Entra ID login.')
 
         return redirect('accounts:entra_setup')
+
+
+class AWSSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Admin page for configuring AWS Identity Center with step-by-step instructions."""
+
+    def test_func(self):
+        return self.request.user.is_staff or self.request.user.is_admin_user
+
+    def get(self, request):
+        config = AWSConfig.get_config()
+        return render(request, 'pam/aws_setup.html', {
+            'config': config,
+            'is_configured': config.is_configured(),
+            'auth_method': config.get_auth_method(),
+        })
+
+    def post(self, request):
+        config = AWSConfig.get_config()
+        config.sso_instance_arn = request.POST.get('sso_instance_arn', '').strip()
+        config.region = request.POST.get('region', 'us-east-1').strip()
+        config.role_arn = request.POST.get('role_arn', '').strip()
+        config.role_session_name = request.POST.get('role_session_name', 'PAM-Session').strip()
+        config.external_id = request.POST.get('external_id', '').strip()
+        config.roles_anywhere_profile_arn = request.POST.get('roles_anywhere_profile_arn', '').strip()
+        config.roles_anywhere_trust_arn = request.POST.get('roles_anywhere_trust_arn', '').strip()
+        config.access_key_id = request.POST.get('access_key_id', '').strip()
+        config.secret_access_key = request.POST.get('secret_access_key', '').strip()
+        config.configured_by = request.user
+        config.save()
+
+        if config.is_configured():
+            messages.success(request, 'AWS Identity Center configuration saved successfully!')
+        else:
+            messages.warning(request, 'Configuration saved but is incomplete. Fill in at least one auth method.')
+
+        return redirect('accounts:aws_setup')
+
+

@@ -5,7 +5,8 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from pam.admin_site import admin_site
-from .models import User, EntraConfig
+from .models import User, EntraConfig, AWSConfig
+
 
 
 @admin_site.register(User)
@@ -124,3 +125,73 @@ class EntraConfigAdmin(admin.ModelAdmin):
                 existing = EntraConfig.get_config()
                 setattr(obj, secret_field, getattr(existing, secret_field))
         super().save_model(request, obj, form, change)
+
+
+@admin_site.register(AWSConfig)
+class AWSConfigAdmin(admin.ModelAdmin):
+    list_display = ('sso_instance_arn', 'region', 'auth_method_display', 'configured_at', 'configured_by')
+    readonly_fields = ('configured_at', 'configured_by')
+
+    fieldsets = (
+        ('SSO Instance', {
+            'fields': ('sso_instance_arn', 'region'),
+            'description': 'AWS IAM Identity Center instance configuration.',
+        }),
+        ('STS AssumeRole (Best for cross-account)', {
+            'fields': ('role_arn', 'role_session_name', 'external_id'),
+            'description': 'PAM will call STS AssumeRole to get temporary credentials. '
+                           'The role must trust PAM\'s current identity.',
+            'classes': ('wide',),
+        }),
+        ('IAM Roles Anywhere (Best for on-prem / OCI)', {
+            'fields': ('roles_anywhere_profile_arn', 'roles_anywhere_trust_arn'),
+            'description': 'Requires a certificate + private key configured via .env: '
+                           'AWS_ROLES_ANYWHERE_CERT_PATH and AWS_ROLES_ANYWHERE_KEY_PATH',
+            'classes': ('wide',),
+        }),
+        ('IAM User Keys (Dev only - fallback)', {
+            'fields': ('access_key_id', 'secret_access_key'),
+            'description': 'Long-lived IAM user credentials. Only use for development.',
+            'classes': ('wide',),
+        }),
+        ('Metadata', {
+            'fields': ('configured_at', 'configured_by'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def auth_method_display(self, obj):
+        """Show the detected auth method."""
+        if not obj.pk:
+            return ''
+        method = obj.get_auth_method()
+        badges = {
+            'instance_profile': ('success', 'Instance Profile'),
+            'roles_anywhere': ('info', 'Roles Anywhere'),
+            'assume_role': ('primary', 'STS AssumeRole'),
+            'iam_user': ('warning', 'IAM User Keys'),
+        }
+        color, label = badges.get(method, ('secondary', method))
+        return format_html('<span class="badge bg-{}">{}</span>', color, label)
+    auth_method_display.short_description = 'Auth Method'
+
+    def has_add_permission(self, request):
+        return not AWSConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        """Redirect directly to the change form since there's only one config."""
+        config = AWSConfig.get_config()
+        if config.pk:
+            return redirect(
+                reverse('admin:accounts_awsconfig_change', args=[config.pk])
+            )
+        return super().changelist_view(request, extra_context)
+
+    def save_model(self, request, obj, form, change):
+        obj.configured_by = request.user
+        super().save_model(request, obj, form, change)
+
+

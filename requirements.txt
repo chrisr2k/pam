@@ -17,3 +17,4 @@ azure-core>=1.30
 google-cloud-secret-manager>=2.19
 oci>=2.125
 cryptography>=41.0
+requests>=2.31

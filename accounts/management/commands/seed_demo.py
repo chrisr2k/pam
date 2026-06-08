@@ -36,12 +36,12 @@ class Command(BaseCommand):
                 'is_superuser': True,
             },
         )
+        admin_user.set_password(admin_password)
+        admin_user.save()
         if created:
-            admin_user.set_password(admin_password)
-            admin_user.save()
             self.stdout.write(self.style.SUCCESS(f'Created admin user (password: {admin_password})'))
         else:
-            self.stdout.write(self.style.WARNING('Admin user already exists'))
+            self.stdout.write(self.style.SUCCESS(f'Reset admin user password (password: {admin_password})'))
 
         # Create sample approver
         approver, created = User.objects.get_or_create(
@@ -52,12 +52,12 @@ class Command(BaseCommand):
                 'is_staff': True,
             },
         )
+        approver.set_password('approver123')
+        approver.save()
         if created:
-            approver.set_password('approver123')
-            approver.save()
             self.stdout.write(self.style.SUCCESS('Created approver user (password: approver123)'))
         else:
-            self.stdout.write(self.style.WARNING('Approver user already exists'))
+            self.stdout.write(self.style.SUCCESS('Reset approver user password (password: approver123)'))
 
         # Create sample requester
         requester, created = User.objects.get_or_create(
@@ -67,12 +67,12 @@ class Command(BaseCommand):
                 'role': User.Role.REQUESTER,
             },
         )
+        requester.set_password('requester123')
+        requester.save()
         if created:
-            requester.set_password('requester123')
-            requester.save()
             self.stdout.write(self.style.SUCCESS('Created requester user (password: requester123)'))
         else:
-            self.stdout.write(self.style.WARNING('Requester user already exists'))
+            self.stdout.write(self.style.SUCCESS('Reset requester user password (password: requester123)'))
 
         # Create sample AWS role
         aws_role, created = PrivilegedRole.objects.get_or_create(

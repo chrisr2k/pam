@@ -1,0 +1,319 @@
+{% extends 'pam/base.html' %}
+{% load static %}
+
+{% block title %}AWS Identity Center Setup - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-aws"></i> AWS Identity Center Configuration</h2>
+            <p class="text-muted">Configure AWS IAM Identity Center (SSO) for privileged access management.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Configuration Form -->
+        <div class="col-lg-5 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-gear-fill"></i> Settings</span>
+                    {% if is_configured %}
+                    <span class="badge bg-success">Configured</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Not Configured</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3">
+                            <i class="bi bi-cloud"></i> SSO Instance
+                        </h6>
+
+                        <div class="mb-3">
+                            <label for="sso_instance_arn" class="form-label">
+                                <i class="bi bi-upc-scan"></i> SSO Instance ARN
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="sso_instance_arn" name="sso_instance_arn"
+                                   value="{{ config.sso_instance_arn }}" placeholder="arn:aws:sso:::instance/ssoins-xxxxxxxxxxxx">
+                            <div class="form-text">Leave blank to auto-discover if you have only one instance</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="region" class="form-label">
+                                <i class="bi bi-globe"></i> AWS Region
+                            </label>
+                            <input type="text" class="form-control font-monospace" id="region" name="region"
+                                   value="{{ config.region|default:'us-east-1' }}" placeholder="us-east-1">
+                            <div class="form-text">Region where Identity Center is configured</div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h6 class="text-success border-bottom pb-2 mb-3">
+                            <i class="bi bi-shield-check"></i> Authentication Method
+                            <span class="badge bg-info text-dark ms-1">Choose one</span>
+                        </h6>
+
+                        {% if is_configured %}
+                        <div class="alert alert-info py-2 mb-3">
+                            <i class="bi bi-info-circle-fill"></i>
+                            <strong>Current auth method:</strong>
+                            <span class="badge bg-{% if auth_method == 'instance_profile' %}success{% elif auth_method == 'assume_role' %}primary{% elif auth_method == 'roles_anywhere' %}info{% else %}warning{% endif %} ms-1">
+                                {{ auth_method|title }}
+                            </span>
+                        </div>
+                        {% endif %}
+
+                        <!-- Option 1: Instance Profile -->
+                        <div class="card mb-3 border-success">
+                            <div class="card-header bg-success text-white py-2">
+                                <strong>Option A: IAM Instance Profile</strong>
+                                <span class="badge bg-light text-success ms-2">Best for AWS</span>
+                            </div>
+                            <div class="card-body py-2 small">
+                                <p class="mb-1">If PAM runs on <strong>EC2, ECS, or EKS</strong>, no credentials needed.</p>
+                                <ol class="mb-0">
+                                    <li>Attach an IAM role to your compute resource</li>
+                                    <li>Grant it <code>sso:CreateAccountAssignment</code>, <code>sso:DeleteAccountAssignment</code>, <code>sso:ListPermissionSets</code>, <code>identitystore:ListUsers</code></li>
+                                    <li>That's it — boto3 auto-discovers credentials from the instance metadata</li>
+                                </ol>
+                            </div>
+                        </div>
+
+                        <!-- Option 2: STS AssumeRole -->
+                        <div class="card mb-3 border-primary">
+                            <div class="card-header bg-primary text-white py-2">
+                                <strong>Option B: STS AssumeRole</strong>
+                                <span class="badge bg-light text-primary ms-2">Cross-account</span>
+                            </div>
+                            <div class="card-body py-2 small">
+                                <p class="mb-1">PAM assumes an IAM role that has SSO Admin permissions.</p>
+                                <div class="mb-3">
+                                    <label for="role_arn" class="form-label">IAM Role ARN</label>
+                                    <input type="text" class="form-control form-control-sm font-monospace" id="role_arn" name="role_arn"
+                                           value="{{ config.role_arn }}" placeholder="arn:aws:iam::123456789012:role/PAM-SSO-Admin">
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="role_session_name" class="form-label">Session Name</label>
+                                        <input type="text" class="form-control form-control-sm font-monospace" id="role_session_name" name="role_session_name"
+                                               value="{{ config.role_session_name|default:'PAM-Session' }}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="external_id" class="form-label">External ID (optional)</label>
+                                        <input type="text" class="form-control form-control-sm font-monospace" id="external_id" name="external_id"
+                                               value="{{ config.external_id }}" placeholder="Leave blank if not required">
+                                    </div>
+                                </div>
+                                <p class="mb-0 text-muted">
+                                    <i class="bi bi-info-circle"></i>
+                                    The role's trust policy must trust PAM's current identity (instance profile, Roles Anywhere session, or IAM user).
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Option 3: IAM Roles Anywhere -->
+                        <div class="card mb-3 border-info">
+                            <div class="card-header bg-info text-white py-2">
+                                <strong>Option C: IAM Roles Anywhere</strong>
+                                <span class="badge bg-light text-info ms-2">Best for On-Prem / OCI</span>
+                            </div>
+                            <div class="card-body py-2 small">
+                                <p class="mb-1">For non-AWS environments (on-prem, OCI, GCP). Uses a certificate to authenticate.</p>
+                                <div class="mb-3">
+                                    <label for="roles_anywhere_profile_arn" class="form-label">Roles Anywhere Profile ARN</label>
+                                    <input type="text" class="form-control form-control-sm font-monospace" id="roles_anywhere_profile_arn" name="roles_anywhere_profile_arn"
+                                           value="{{ config.roles_anywhere_profile_arn }}" placeholder="arn:aws:rolesanywhere:us-east-1:123456789012:profile/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="roles_anywhere_trust_arn" class="form-label">Trust Anchor ARN</label>
+                                    <input type="text" class="form-control form-control-sm font-monospace" id="roles_anywhere_trust_arn" name="roles_anywhere_trust_arn"
+                                           value="{{ config.roles_anywhere_trust_arn }}" placeholder="arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                </div>
+                                <p class="mb-0 text-muted">
+                                    <i class="bi bi-info-circle"></i>
+                                    Configure the certificate via <code>.env</code>:
+                                    <code class="d-block bg-dark text-light p-1 rounded mt-1 small">
+                                        AWS_ROLES_ANYWHERE_CERT_PATH=/path/to/cert.pem<br>
+                                        AWS_ROLES_ANYWHERE_KEY_PATH=/path/to/key.pem
+                                    </code>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Option 4: IAM User Keys (Dev only) -->
+                        <div class="card mb-3 border-warning">
+                            <div class="card-header bg-warning text-dark py-2">
+                                <strong>Option D: IAM User Keys</strong>
+                                <span class="badge bg-light text-warning ms-2">Dev Only</span>
+                            </div>
+                            <div class="card-body py-2 small">
+                                <p class="mb-1">Simplest option for development. Uses long-lived IAM user access keys.</p>
+                                <div class="alert alert-warning py-1 mb-2 small">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <strong>Not recommended for production.</strong> Use Instance Profile, AssumeRole, or Roles Anywhere instead.
+                                </div>
+                                <div class="mb-2">
+                                    <label for="access_key_id" class="form-label">Access Key ID</label>
+                                    <input type="text" class="form-control form-control-sm font-monospace" id="access_key_id" name="access_key_id"
+                                           value="{{ config.access_key_id }}" placeholder="AKIAIOSFODNN7EXAMPLE">
+                                </div>
+                                <div class="mb-0">
+                                    <label for="secret_access_key" class="form-label">Secret Access Key</label>
+                                    <input type="password" class="form-control form-control-sm font-monospace" id="secret_access_key" name="secret_access_key"
+                                           value="{{ config.secret_access_key }}" placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-save"></i> Save Configuration
+                        </button>
+                    </form>
+                </div>
+                {% if is_configured %}
+                <div class="card-footer text-success small">
+                    <i class="bi bi-check-circle-fill"></i>
+                    AWS Identity Center is configured.
+                    {% if config.configured_by %}
+                    <br>Last configured by <strong>{{ config.configured_by.get_full_name|default:config.configured_by.username }}</strong>
+                    on <strong>{{ config.configured_at|date:"M d, Y H:i" }}</strong>.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Step-by-Step Instructions -->
+        <div class="col-lg-7 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-journal-text"></i> Setup Guide
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Follow these steps to configure AWS IAM Identity Center for this PAM application.</p>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">1</span> Choose an Authentication Method</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Select the method that matches your deployment environment:</p>
+                            <table class="table table-sm table-bordered">
+                                <tr>
+                                    <th>Environment</th>
+                                    <th>Recommended Method</th>
+                                    <th>Long-lived Secrets?</th>
+                                </tr>
+                                <tr>
+                                    <td>AWS EC2 / ECS / EKS</td>
+                                    <td><span class="badge bg-success">Instance Profile</span></td>
+                                    <td><i class="bi bi-check-circle-fill text-success"></i> No</td>
+                                </tr>
+                                <tr>
+                                    <td>Cross-account (any)</td>
+                                    <td><span class="badge bg-primary">STS AssumeRole</span></td>
+                                    <td><i class="bi bi-check-circle-fill text-success"></i> No</td>
+                                </tr>
+                                <tr>
+                                    <td>On-prem / OCI / GCP</td>
+                                    <td><span class="badge bg-info">Roles Anywhere</span></td>
+                                    <td><i class="bi bi-check-circle-fill text-success"></i> No</td>
+                                </tr>
+                                <tr>
+                                    <td>Local development</td>
+                                    <td><span class="badge bg-warning">IAM User Keys</span></td>
+                                    <td><i class="bi bi-x-circle-fill text-warning"></i> Yes</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">2</span> Create an IAM Role for PAM</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Create an IAM role with the following trust policy and permissions:</p>
+
+                            <h6>Trust Policy (for AssumeRole):</h6>
+                            <div class="bg-dark text-light p-2 rounded mb-2 font-monospace small">
+                                {{ '{' }}"Version": "2012-10-17","Statement": [{{ '{' }}
+                                "Effect": "Allow","Principal": {{ '{' }}"AWS": "arn:aws:iam::YOUR_ACCOUNT:role/PAM-Base-Role"{{ '}' }},
+                                "Action": "sts:AssumeRole",
+                                "Condition": {{ '{' }}"StringEquals": {{ '{' }}"sts:ExternalId": "your-external-id"{{ '}' }}{{ '}' }}
+                                {{ '}' }}]{{ '}' }}
+                            </div>
+
+                            <h6>Permissions Policy:</h6>
+                            <div class="bg-dark text-light p-2 rounded mb-2 font-monospace small">
+                                {{ '{' }}"Version": "2012-10-17","Statement": [
+                                {{ '{' }}"Effect": "Allow","Action": [
+                                "sso:CreateAccountAssignment",
+                                "sso:DeleteAccountAssignment",
+                                "sso:ListPermissionSets",
+                                "sso:DescribePermissionSet",
+                                "sso:ListInstances",
+                                "identitystore:ListUsers",
+                                "identitystore:DescribeUser"
+                                ],"Resource": "*"{{ '}' }}
+                                ]{{ '}' }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-primary rounded-pill me-2">3</span> Configure IAM Roles Anywhere (if on-prem)</h5>
+                        <div class="ms-4 ps-2">
+                            <p>If running outside AWS, set up IAM Roles Anywhere:</p>
+                            <ol>
+                                <li>Create a <strong>trust anchor</strong> in IAM Roles Anywhere with your CA certificate</li>
+                                <li>Create a <strong>profile</strong> that maps to the IAM role above</li>
+                                <li>Install the <strong>aws_signing_helper</strong> or use the <strong>rolesanywhere-credential-helper</strong></li>
+                                <li>Set the certificate and key paths in your <code>.env</code> file</li>
+                            </ol>
+                            <div class="bg-dark text-light p-2 rounded mb-0 font-monospace small">
+                                # .env configuration for Roles Anywhere<br>
+                                AWS_ROLES_ANYWHERE_CERT_PATH=/etc/pam/cert.pem<br>
+                                AWS_ROLES_ANYWHERE_KEY_PATH=/etc/pam/key.pem
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step mb-4">
+                        <h5><span class="badge bg-success rounded-pill me-2">4</span> Add AWS Roles in PAM</h5>
+                        <div class="ms-4 ps-2">
+                            <p>After configuring AWS, add the permission sets you want to manage:</p>
+                            <ol>
+                                <li>Go to <a href="{% url 'admin:index' %}">Django Admin</a> → <strong>Roles</strong> → <strong>Privileged roles</strong></li>
+                                <li>Click <strong>Add privileged role</strong></li>
+                                <li>Set <strong>Provider</strong> to <code>AWS</code></li>
+                                <li>Set <strong>Permission Set ARN</strong> to the ARN of the permission set</li>
+                                <li>Set <strong>AWS Account ID</strong> to the target account</li>
+                            </ol>
+                            <p class="mb-0">Find permission sets via: <code class="user-select-all">aws sso-admin list-permission-sets --instance-arn <your-instance-arn></code></p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h5><span class="badge bg-success rounded-pill me-2">5</span> Test the Configuration</h5>
+                        <div class="ms-4 ps-2">
+                            <p>Once configured:</p>
+                            <ol>
+                                <li>Go to <strong>Roles</strong> page and verify permission sets are listed</li>
+                                <li>Create a test access request for an AWS role</li>
+                                <li>Approve the request and verify the account assignment is created</li>
+                                <li>Check the <strong>Audit Log</strong> for provisioning events</li>
+                            </ol>
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-info-circle-fill"></i>
+                                The provider auto-detects which auth method to use based on your configuration.
+                                Current method: <strong>{{ auth_method|title }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
