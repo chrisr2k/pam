@@ -47,12 +47,18 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
+      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
+
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
       OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID: ${OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID:-}
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
+    volumes:
+      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
     depends_on:
       db:
         condition: service_healthy
@@ -63,6 +69,9 @@ services:
              python manage.py collectstatic --noinput &&
              python manage.py seed_demo &&
              gunicorn pam.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+
+
+
 
   celery_worker:
     build: .
@@ -85,18 +94,24 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
+      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
       OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID: ${OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID:-}
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
+    volumes:
+      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A pam worker -l info
+
 
   celery_beat:
     build: .
@@ -119,18 +134,25 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
+      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
       OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID: ${OCI_SECRET_OCID_PAM_AWS_ACCESS_KEY_ID:-}
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
+    volumes:
+      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
+
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A pam beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
 
   caddy:
     image: caddy:2-alpine
