@@ -47,8 +47,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
-      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
-      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
+      AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
 
@@ -57,8 +57,8 @@ services:
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
     volumes:
-      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
-      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
+      - ${AWS_ROLES_ANYWHERE_CERT_HOST_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_HOST_PATH:-/dev/null}:/app/certs/client.key
     depends_on:
       db:
         condition: service_healthy
@@ -74,6 +74,7 @@ services:
 
 
   celery_worker:
+
     build: .
     environment:
       ENV_MASTER_PASSWORD: ${ENV_MASTER_PASSWORD:-}
@@ -94,8 +95,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
-      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
-      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
+      AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
@@ -103,8 +104,8 @@ services:
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
     volumes:
-      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
-      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
+      - ${AWS_ROLES_ANYWHERE_CERT_HOST_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_HOST_PATH:-/dev/null}:/app/certs/client.key
     depends_on:
       db:
         condition: service_healthy
@@ -114,6 +115,7 @@ services:
 
 
   celery_beat:
+
     build: .
     environment:
       ENV_MASTER_PASSWORD: ${ENV_MASTER_PASSWORD:-}
@@ -134,8 +136,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
-      AWS_ROLES_ANYWHERE_CERT_PATH: ${AWS_ROLES_ANYWHERE_CERT_PATH:-}
-      AWS_ROLES_ANYWHERE_KEY_PATH: ${AWS_ROLES_ANYWHERE_KEY_PATH:-}
+      AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
+      AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
@@ -143,10 +145,11 @@ services:
       OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY: ${OCI_SECRET_OCID_PAM_AWS_SECRET_ACCESS_KEY:-}
       OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN: ${OCI_SECRET_OCID_PAM_AWS_SSO_INSTANCE_ARN:-}
     volumes:
-      - ${AWS_ROLES_ANYWHERE_CERT_PATH:-/dev/null}:/app/certs/client.crt
-      - ${AWS_ROLES_ANYWHERE_KEY_PATH:-/dev/null}:/app/certs/client.key
+      - ${AWS_ROLES_ANYWHERE_CERT_HOST_PATH:-/dev/null}:/app/certs/client.crt
+      - ${AWS_ROLES_ANYWHERE_KEY_HOST_PATH:-/dev/null}:/app/certs/client.key
 
     depends_on:
+
       db:
         condition: service_healthy
       redis:
