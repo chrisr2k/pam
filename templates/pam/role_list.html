@@ -3,7 +3,54 @@
 {% block title %}Privileged Roles - PAM{% endblock %}
 
 {% block content %}
-<h1 class="h3 mb-4">Privileged Roles</h1>
+<h1 class="h3 mb-2">Privileged Roles</h1>
+<p class="text-muted small mb-3">
+    {% if is_paginated %}
+    Showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }} of
+    {{ page_obj.paginator.count }} roles{% if filters_active %} (filtered){% endif %}
+    {% else %}
+    Showing {{ roles|length }} of {{ total_roles }} roles{% if filters_active %} (filtered){% endif %}
+    {% endif %}
+</p>
+
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small text-muted mb-1" for="role-search">Search</label>
+                <input type="search" class="form-control form-control-sm" id="role-search" name="q"
+                       value="{{ query }}" placeholder="Name, description, AWS account, Entra role…">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1" for="role-provider">Provider</label>
+                <select class="form-select form-select-sm" id="role-provider" name="provider">
+                    <option value="">All providers</option>
+                    <option value="AWS" {% if provider_filter == 'AWS' %}selected{% endif %}>AWS Identity Center</option>
+                    <option value="ENTRA" {% if provider_filter == 'ENTRA' %}selected{% endif %}>Entra ID PIM</option>
+                    <option value="VAULT" {% if provider_filter == 'VAULT' %}selected{% endif %}>PAM Vault</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="role-approval">Approval</label>
+                <select class="form-select form-select-sm" id="role-approval" name="approval">
+                    <option value="">Any</option>
+                    <option value="yes" {% if approval_filter == 'yes' %}selected{% endif %}>Requires approval</option>
+                    <option value="no" {% if approval_filter == 'no' %}selected{% endif %}>Instant grant</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-fill">
+                    <i class="bi bi-funnel"></i> Filter
+                </button>
+                {% if filters_active %}
+                <a href="{% url 'roles:list' %}" class="btn btn-outline-secondary btn-sm" title="Clear filters">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="row">
     {% for role in roles %}
@@ -39,10 +86,39 @@
     <div class="col">
         <div class="card">
             <div class="card-body text-center">
-                <p class="text-muted mb-0">No privileged roles configured yet.</p>
+                <p class="text-muted mb-0">
+                    {% if filters_active %}
+                    No roles match your filters.
+                    <a href="{% url 'roles:list' %}">Clear filters</a>
+                    {% else %}
+                    No privileged roles configured yet.
+                    {% endif %}
+                </p>
             </div>
         </div>
     </div>
     {% endfor %}
 </div>
+
+{% if is_paginated %}
+<nav aria-label="Role pages" class="mt-3">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+            <a class="page-link" href="?{% if filter_qs %}{{ filter_qs }}&amp;{% endif %}page={% if page_obj.has_previous %}{{ page_obj.previous_page_number }}{% else %}1{% endif %}"
+               {% if not page_obj.has_previous %}tabindex="-1" aria-disabled="true"{% endif %}>
+                <i class="bi bi-chevron-left"></i> Previous
+            </a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+            <a class="page-link" href="?{% if filter_qs %}{{ filter_qs }}&amp;{% endif %}page={% if page_obj.has_next %}{{ page_obj.next_page_number }}{% else %}{{ page_obj.paginator.num_pages }}{% endif %}"
+               {% if not page_obj.has_next %}tabindex="-1" aria-disabled="true"{% endif %}>
+                Next <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
 {% endblock %}

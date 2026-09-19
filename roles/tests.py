@@ -216,6 +216,144 @@ class RoleListViewTests(TestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(len(response.context['roles']), 2)
 
+    def test_search_by_name(self):
+        """Test that q filters by name."""
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'q': 'role-1'})
+        self.assertEqual(len(response.context['roles']), 1)
+        self.assertEqual(response.context['roles'][0].name, 'Role-1')
+        self.assertTrue(response.context['filters_active'])
+
+    def test_search_by_description(self):
+        """Test that q filters by description."""
+        PrivilegedRole.objects.create(
+            name='DB-Admin',
+            provider='AWS',
+            aws_permission_set_arn='ps-db',
+            description='Production database administrator',
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'q': 'database'})
+        self.assertEqual(len(response.context['roles']), 1)
+        self.assertEqual(response.context['roles'][0].name, 'DB-Admin')
+
+    def test_search_by_aws_account_name(self):
+        """Test that q matches the AWS account display name."""
+        PrivilegedRole.objects.create(
+            name='Role-3',
+            provider='AWS',
+            aws_permission_set_arn='ps-3',
+            aws_account_name='Payments-Prod',
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'q': 'payments'})
+        self.assertEqual(len(response.context['roles']), 1)
+        self.assertEqual(response.context['roles'][0].name, 'Role-3')
+
+    def test_search_no_match_shows_empty_state(self):
+        """Test that a no-match search returns no roles."""
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'q': 'zzz-none'})
+        self.assertEqual(len(response.context['roles']), 0)
+        self.assertContains(response, 'No roles match your filters')
+
+    def test_filter_by_provider(self):
+        """Test that provider filters to that provider only."""
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'provider': 'AWS'})
+        names = [r.name for r in response.context['roles']]
+        self.assertEqual(names, ['Role-1'])
+
+    def test_filter_invalid_provider_ignored(self):
+        """Test that an unknown provider param does not filter."""
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'provider': 'BOGUS'})
+        self.assertEqual(len(response.context['roles']), 2)
+        self.assertFalse(response.context['filters_active'])
+
+    def test_filter_by_approval(self):
+        """Test that approval=no returns only instant-grant roles."""
+        PrivilegedRole.objects.create(
+            name='Instant-Role',
+            provider='AWS',
+            aws_permission_set_arn='ps-instant',
+            requires_approval=False,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'approval': 'no'})
+        names = [r.name for r in response.context['roles']]
+        self.assertEqual(names, ['Instant-Role'])
+
+    def test_combined_search_and_provider(self):
+        """Test that search and provider filters combine."""
+        PrivilegedRole.objects.create(
+            name='Payments-Admin',
+            provider='ENTRA',
+            entra_role_id='pay-1',
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(
+            self.list_url, {'q': 'payments', 'provider': 'ENTRA'})
+        self.assertEqual(len(response.context['roles']), 1)
+        self.assertEqual(response.context['roles'][0].name, 'Payments-Admin')
+
+    def test_total_roles_context(self):
+        """Test that total_roles counts all active roles, not the filtered set."""
+        PrivilegedRole.objects.create(
+            name='Inactive-Role',
+            provider='AWS',
+            aws_permission_set_arn='ps-inactive-2',
+            is_active=False,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'provider': 'AWS'})
+        self.assertEqual(response.context['total_roles'], 2)
+        self.assertEqual(len(response.context['roles']), 1)
+
+    def _add_bulk_roles(self, count=30):
+        """Add many active AWS roles (bulk_create skips clean() for speed)."""
+        PrivilegedRole.objects.bulk_create([
+            PrivilegedRole(
+                name=f'Bulk-{i:02d}',
+                provider='AWS',
+                aws_permission_set_arn=f'ps-bulk-{i:02d}',
+            )
+            for i in range(count)
+        ])
+
+    def test_pagination_limits_page_size(self):
+        """Test that the list paginates at 24 roles per page."""
+        self._add_bulk_roles()
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url)
+        self.assertTrue(response.context['is_paginated'])
+        self.assertEqual(len(response.context['roles']), 24)
+        self.assertEqual(response.context['page_obj'].paginator.count, 32)
+
+    def test_pagination_page_two(self):
+        """Test that page 2 shows the remaining roles."""
+        self._add_bulk_roles()
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'page': 2})
+        self.assertEqual(response.context['page_obj'].number, 2)
+        self.assertEqual(len(response.context['roles']), 8)
+
+    def test_out_of_range_page_falls_back_to_first(self):
+        """Test that a page beyond the range renders page 1 instead of 404."""
+        self._add_bulk_roles()
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'page': 999})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['page_obj'].number, 1)
+
+    def test_pagination_links_preserve_filters(self):
+        """Test that pagination links keep the active filters."""
+        self._add_bulk_roles()
+        self.client.force_login(self.user)
+        response = self.client.get(self.list_url, {'provider': 'AWS', 'page': 1})
+        self.assertEqual(response.context['filter_qs'], 'provider=AWS')
+        self.assertContains(response, '?provider=AWS&amp;page=2')
+
 
 class RoleDetailViewTests(TestCase):
     """Test the role detail view."""
