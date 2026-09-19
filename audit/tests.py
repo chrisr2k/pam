@@ -98,6 +98,20 @@ class AuditLogListViewTests(TestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, 200)
 
+    def test_log_renders_system_rows_without_actor(self):
+        """Rows with actor=None (system events) render as 'System' (regression)."""
+        self.client.force_login(self.admin)
+        AuditLog.objects.create(
+            actor=None,
+            action='VAULT_SECRET_ROTATED',
+            target_type='VaultEntry',
+            target_id='1',
+            details={'entry': 'Test'},
+        )
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'System')
+
     def test_log_pagination(self):
         """Test that log is paginated."""
         self.client.force_login(self.admin)
@@ -128,3 +142,28 @@ class AuditLogListViewTests(TestCase):
         )
         response = self.client.get(self.list_url, {'action': 'SPECIFIC_ACTION'})
         self.assertEqual(len(response.context['logs']), 1)
+
+
+class LogActionXFFTests(TestCase):
+    """Test XFF-aware IP capture in log_action."""
+
+    def test_log_action_uses_xff_first_hop(self):
+        """Behind a proxy, the first X-Forwarded-For hop is the client IP."""
+        from django.test import RequestFactory
+        from audit.middleware import log_action
+        request = RequestFactory().get('/')
+        request.META['REMOTE_ADDR'] = '172.18.0.6'
+        request.META['HTTP_X_FORWARDED_FOR'] = '203.0.113.7, 172.18.0.6'
+        log_action(actor=None, action='LOGIN', request=request)
+        entry = AuditLog.objects.filter(action='LOGIN').last()
+        self.assertEqual(entry.ip_address, '203.0.113.7')
+
+    def test_log_action_falls_back_to_remote_addr(self):
+        """Without XFF, REMOTE_ADDR is used."""
+        from django.test import RequestFactory
+        from audit.middleware import log_action
+        request = RequestFactory().get('/')
+        request.META['REMOTE_ADDR'] = '192.168.1.10'
+        log_action(actor=None, action='LOGIN', request=request)
+        entry = AuditLog.objects.filter(action='LOGIN').last()
+        self.assertEqual(entry.ip_address, '192.168.1.10')

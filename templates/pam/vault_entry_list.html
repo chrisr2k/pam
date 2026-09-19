@@ -1,0 +1,69 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Vault - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-safe2"></i> Vault Entries</h1>
+        <a href="{% url 'vault:create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Add Entry
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            {% if entries %}
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Auto-rotate</th>
+                        <th>Rotation</th>
+                        <th>Approval</th>
+                        <th>Active checkouts</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td><a href="{% url 'vault:detail' entry.pk %}">{{ entry.name }}</a></td>
+                        <td><span class="badge bg-secondary">{{ entry.get_secret_type_display }}</span></td>
+                        <td>
+                            {% if entry.auto_rotate %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-dash-circle text-muted"></i>{% endif %}
+                        </td>
+                        <td>
+                            {% if entry.rotation_plugin %}
+                            <span class="badge bg-primary">{{ entry.rotation_plugin }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">vault-only</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if entry.requires_approval %}<span class="badge bg-info">Required</span>{% else %}<span class="badge bg-warning">Auto</span>{% endif %}
+                        </td>
+                        <td>{{ entry.active_checkouts|default:0 }}</td>
+                        <td>
+                            {% if entry.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'vault:detail' entry.pk %}" class="btn btn-sm btn-outline-primary">Manage</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted mb-0">No vault entries yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -8,7 +8,7 @@
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-shield-check"></i> {{ role.name }}</span>
-                <span class="badge bg-{% if role.provider == 'AWS' %}warning{% else %}primary{% endif %} fs-6">
+                <span class="badge bg-{% if role.provider == 'AWS' %}warning{% elif role.provider == 'VAULT' %}dark{% else %}primary{% endif %} fs-6">
                     {{ role.provider }}
                 </span>
             </div>
@@ -46,6 +46,20 @@
                     <dt class="col-sm-4">Entra Role</dt>
                     <dd class="col-sm-8">{{ role.entra_role_name }}</dd>
                     {% endif %}
+
+                    {% if role.vault_entry %}
+                    <dt class="col-sm-4">Secret Type</dt>
+                    <dd class="col-sm-8">{{ role.vault_entry.get_secret_type_display }}</dd>
+
+                    <dt class="col-sm-4">Auto-rotate</dt>
+                    <dd class="col-sm-8">
+                        {% if role.vault_entry.auto_rotate %}
+                        <span class="text-success"><i class="bi bi-arrow-repeat"></i> New random value on check-in</span>
+                        {% else %}
+                        <span class="text-muted">Off</span>
+                        {% endif %}
+                    </dd>
+                    {% endif %}
                 </dl>
             </div>
         </div>
@@ -55,12 +69,50 @@
         <div class="card">
             <div class="card-header">Actions</div>
             <div class="card-body">
+                {% if role.vault_entry %}
+                    {% if vault_checkout %}
+                    <div class="alert alert-success small">
+                        <i class="bi bi-unlock-fill"></i>
+                        Active checkout — expires {{ vault_checkout.expires_at|date:"M d, H:i" }}
+                        ({{ vault_checkout.expires_at|timeuntil }}).
+                    </div>
+                    <a href="{% url 'vault:detail' role.vault_entry.pk %}" class="btn btn-primary w-100 mb-2">
+                        <i class="bi bi-eye"></i> Reveal Secret
+                    </a>
+                    {% else %}
+                    <a href="{% url 'requests:create' %}?role={{ role.id }}" class="btn btn-primary w-100 mb-2">
+                        <i class="bi bi-send"></i> Request Checkout
+                    </a>
+                    {% endif %}
+                {% else %}
                 <a href="{% url 'requests:create' %}?role={{ role.id }}" class="btn btn-primary w-100 mb-2">
                     <i class="bi bi-send"></i> Request Access
                 </a>
+                {% endif %}
                 <a href="{% url 'roles:list' %}" class="btn btn-outline-secondary w-100">
                     <i class="bi bi-arrow-left"></i> Back to Roles
                 </a>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Usage (last 90 days)
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-7">Requests granted</dt>
+                    <dd class="col-sm-5">{{ role_usage.request_count }}</dd>
+
+                    <dt class="col-sm-7">Distinct users</dt>
+                    <dd class="col-sm-5">{{ role_usage.distinct_users }}</dd>
+
+                    <dt class="col-sm-7">Currently provisioned</dt>
+                    <dd class="col-sm-5">{{ role_usage.active_now }} user{{ role_usage.active_now|pluralize }}</dd>
+
+                    <dt class="col-sm-7">Last activity</dt>
+                    <dd class="col-sm-5">{{ role_usage.last_request_at|date:"M d, Y"|default:"never" }}</dd>
+                </dl>
             </div>
         </div>
     </div>

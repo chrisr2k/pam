@@ -48,31 +48,22 @@ def poll_updates(request):
         for r in recent_requests
     ]
 
-    # Pending approvals count (for approvers)
-    pending_count = 0
-    if user.is_approver:
-        pending_count = AccessRequest.objects.filter(
-            role__approvers=user,
-            status=AccessRequest.Status.PENDING,
-        ).count()
-
-    # Pending approvals list (for approvers)
-    pending_approvals = []
-    if user.is_approver:
-        pending_qs = AccessRequest.objects.filter(
-            role__approvers=user,
-            status=AccessRequest.Status.PENDING,
-        )[:10]
-        pending_approvals = [
-            {
-                'id': r.id,
-                'requester': r.requester.get_full_name() or r.requester.username,
-                'role': r.role.name,
-                'duration': r.requested_duration_minutes,
-                'created_at': r.created_at.isoformat(),
-            }
-            for r in pending_qs
-        ]
+    # Pending approvals for the current user (self-scoped by role membership)
+    pending_qs = AccessRequest.objects.filter(
+        role__approvers=user,
+        status=AccessRequest.Status.PENDING,
+    )
+    pending_count = pending_qs.count()
+    pending_approvals = [
+        {
+            'id': r.id,
+            'requester': r.requester.get_full_name() or r.requester.username,
+            'role': r.role.name,
+            'duration': r.requested_duration_minutes,
+            'created_at': r.created_at.isoformat(),
+        }
+        for r in pending_qs[:10]
+    ]
 
     return JsonResponse({
         'active_sessions': active_sessions,

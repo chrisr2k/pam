@@ -475,3 +475,39 @@ class LogoutViewTests(TestCase):
             self.assertIn('logout', response.url)
         else:
             self.assertEqual(response.url, '/')
+
+
+class HelpViewTests(TestCase):
+    """Test the in-app user guide pages."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+
+    def test_help_requires_login(self):
+        """Help pages require authentication."""
+        response = self.client.get(reverse('accounts:help'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_help_defaults_to_overview(self):
+        """The base help URL renders the overview section."""
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('accounts:help'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'pam/help/overview.html')
+        self.assertEqual(response.context['active_section'], 'overview')
+
+    def test_each_section_renders(self):
+        """Every documented section renders for authenticated users."""
+        self.client.force_login(self.user)
+        for section in ('overview', 'requests', 'mfa', 'vault', 'admin'):
+            response = self.client.get(
+                reverse('accounts:help_section', kwargs={'section': section}))
+            self.assertEqual(response.status_code, 200, section)
+            self.assertEqual(response.context['active_section'], section)
+
+    def test_unknown_section_404s(self):
+        """Unknown sections return 404."""
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse('accounts:help_section', kwargs={'section': 'nonsense'}))
+        self.assertEqual(response.status_code, 404)

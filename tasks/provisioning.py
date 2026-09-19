@@ -2,6 +2,8 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
+from audit.middleware import log_action
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,13 +29,32 @@ def provision_access_sync(request_id: int):
     # Update status to provisioning
     access_request.status = AccessRequest.Status.PROVISIONING
     access_request.save(update_fields=['status'])
+    log_action(
+        actor=access_request.requester,
+        action='PROVISIONING_STARTED',
+        target_type='AccessRequest',
+        target_id=request_id,
+        details={
+            'role': access_request.role.name,
+            'provider': access_request.role.provider,
+        },
+    )
 
     role = access_request.role
     user = access_request.requester
     entra_oid = user.entra_object_id
 
-    if not entra_oid:
+    # Vault checkout needs no Entra OID (local/demo users lack one);
+    # cloud-provider provisioning still requires it.
+    if not entra_oid and role.provider != 'VAULT':
         logger.error(f'User {user.id} has no Entra ID object ID')
+        log_action(
+            actor=access_request.requester,
+            action='PROVISIONING_FAILED',
+            target_type='AccessRequest',
+            target_id=request_id,
+            details={'error': 'User has no Entra ID object ID'},
+        )
         access_request.mark_failed()
         return
 
@@ -58,8 +79,30 @@ def provision_access_sync(request_id: int):
                 'role_id': role.entra_role_id,
                 'justification': access_request.justification,
             }
+        elif role.provider == 'VAULT':
+            from vault.provider import VaultProvider
+            provider = VaultProvider()
+            if not role.vault_entry_id:
+                logger.error(f'Vault role {role.id} has no vault entry')
+                log_action(
+                    actor=access_request.requester,
+                    action='PROVISIONING_FAILED',
+                    target_type='AccessRequest',
+                    target_id=request_id,
+                    details={'error': 'Vault role has no vault entry'},
+                )
+                access_request.mark_failed()
+                return
+            role_config = {'entry_id': role.vault_entry_id}
         else:
             logger.error(f'Unknown provider: {role.provider}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_FAILED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={'error': f'Unknown provider: {role.provider}'},
+            )
             access_request.mark_failed()
             return
 
@@ -72,6 +115,16 @@ def provision_access_sync(request_id: int):
         if result.get('success'):
             access_request.mark_provisioned(provider_ref=result.get('reference_id', ''))
             logger.info(f'Successfully provisioned access for request {request_id}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_SUCCEEDED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={
+                    'role': access_request.role.name,
+                    'provider': access_request.role.provider,
+                },
+            )
 
             # Send notification
             from notifications.services import send_notification
@@ -98,18 +151,57 @@ def provision_access_sync(request_id: int):
                     )
         else:
             logger.error(f'Provisioning failed for request {request_id}: {result.get("error")}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_FAILED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={'error': result.get('error')},
+            )
             access_request.mark_failed()
 
     except Exception as e:
         logger.exception(f'Unexpected error provisioning request {request_id}: {e}')
+        log_action(
+            actor=access_request.requester,
+            action='PROVISIONING_FAILED',
+            target_type='AccessRequest',
+            target_id=request_id,
+            details={'error': str(e)},
+        )
         access_request.mark_failed()
 
 
 
 
-def deprovision_access_sync(request_id: int):
+def _log_expired(access_request, trigger):
+    """Emit ACCESS_EXPIRED audit for expiry-driven deprovisioning only.
+
+    Revoke paths pass trigger='revoked' and log their own ADMIN_REVOKED /
+    ACCESS_REVOKED rows in the views, so no ACCESS_EXPIRED is emitted here.
+    """
+    if trigger != 'expired':
+        return
+    log_action(
+        actor=access_request.requester,
+        action='ACCESS_EXPIRED',
+        target_type='AccessRequest',
+        target_id=access_request.pk,
+        details={
+            'role': access_request.role.name,
+            'provider': access_request.role.provider,
+            'trigger': trigger,
+        },
+    )
+
+
+def deprovision_access_sync(request_id: int, trigger='expired'):
     """
     Synchronous version of deprovision_access for when Celery is not available.
+
+    trigger: 'expired' (expiry-driven) or 'revoked' (user/admin action). Only
+    'expired' emits an ACCESS_EXPIRED audit row; revoke paths log their own
+    ADMIN_REVOKED / ACCESS_REVOKED events in the views.
     """
     from access_requests.models import AccessRequest
     from providers.aws_identity_center import AWSIdentityCenterProvider
@@ -131,6 +223,7 @@ def deprovision_access_sync(request_id: int):
     if not reference_id:
         logger.warning(f'No provider reference ID for request {request_id}')
         access_request.mark_expired()
+        _log_expired(access_request, trigger)
         return
 
     try:
@@ -156,6 +249,10 @@ def deprovision_access_sync(request_id: int):
         elif role.provider == 'ENTRA':
             provider = EntraPIMProvider()
             success = provider.deprovision_access(reference_id)
+        elif role.provider == 'VAULT':
+            from vault.provider import VaultProvider
+            provider = VaultProvider()
+            success = provider.deprovision_access(reference_id)
         else:
             logger.error(f'Unknown provider: {role.provider}')
             return
@@ -163,6 +260,7 @@ def deprovision_access_sync(request_id: int):
         if success:
             access_request.mark_expired()
             logger.info(f'Successfully deprovisioned access for request {request_id}')
+            _log_expired(access_request, trigger)
         else:
             logger.error(f'Deprovisioning failed for request {request_id}')
 
@@ -195,13 +293,32 @@ def provision_access(self, request_id: int):
     # Update status to provisioning
     access_request.status = AccessRequest.Status.PROVISIONING
     access_request.save(update_fields=['status'])
+    log_action(
+        actor=access_request.requester,
+        action='PROVISIONING_STARTED',
+        target_type='AccessRequest',
+        target_id=request_id,
+        details={
+            'role': access_request.role.name,
+            'provider': access_request.role.provider,
+        },
+    )
 
     role = access_request.role
     user = access_request.requester
     entra_oid = user.entra_object_id
 
-    if not entra_oid:
+    # Vault checkout needs no Entra OID (local/demo users lack one);
+    # cloud-provider provisioning still requires it.
+    if not entra_oid and role.provider != 'VAULT':
         logger.error(f'User {user.id} has no Entra ID object ID')
+        log_action(
+            actor=access_request.requester,
+            action='PROVISIONING_FAILED',
+            target_type='AccessRequest',
+            target_id=request_id,
+            details={'error': 'User has no Entra ID object ID'},
+        )
         access_request.mark_failed()
         return
 
@@ -226,8 +343,30 @@ def provision_access(self, request_id: int):
                 'role_id': role.entra_role_id,
                 'justification': access_request.justification,
             }
+        elif role.provider == 'VAULT':
+            from vault.provider import VaultProvider
+            provider = VaultProvider()
+            if not role.vault_entry_id:
+                logger.error(f'Vault role {role.id} has no vault entry')
+                log_action(
+                    actor=access_request.requester,
+                    action='PROVISIONING_FAILED',
+                    target_type='AccessRequest',
+                    target_id=request_id,
+                    details={'error': 'Vault role has no vault entry'},
+                )
+                access_request.mark_failed()
+                return
+            role_config = {'entry_id': role.vault_entry_id}
         else:
             logger.error(f'Unknown provider: {role.provider}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_FAILED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={'error': f'Unknown provider: {role.provider}'},
+            )
             access_request.mark_failed()
             return
 
@@ -240,6 +379,16 @@ def provision_access(self, request_id: int):
         if result.get('success'):
             access_request.mark_provisioned(provider_ref=result.get('reference_id', ''))
             logger.info(f'Successfully provisioned access for request {request_id}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_SUCCEEDED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={
+                    'role': access_request.role.name,
+                    'provider': access_request.role.provider,
+                },
+            )
 
             # Schedule deprovisioning
             schedule_deprovision.apply_async(
@@ -248,18 +397,36 @@ def provision_access(self, request_id: int):
             )
         else:
             logger.error(f'Provisioning failed for request {request_id}: {result.get("error")}')
+            log_action(
+                actor=access_request.requester,
+                action='PROVISIONING_FAILED',
+                target_type='AccessRequest',
+                target_id=request_id,
+                details={'error': result.get('error')},
+            )
             access_request.mark_failed()
 
     except Exception as e:
         logger.exception(f'Unexpected error provisioning request {request_id}: {e}')
+        log_action(
+            actor=access_request.requester,
+            action='PROVISIONING_FAILED',
+            target_type='AccessRequest',
+            target_id=request_id,
+            details={'error': str(e)},
+        )
         access_request.mark_failed()
 
 
 
 @shared_task
-def deprovision_access(request_id: int):
+def deprovision_access(request_id: int, trigger='expired'):
     """
     Deprovision privileged access for an expired/revoked request.
+
+    trigger: 'expired' (expiry-driven) or 'revoked' (user/admin action). Only
+    'expired' emits an ACCESS_EXPIRED audit row; revoke paths log their own
+    ADMIN_REVOKED / ACCESS_REVOKED events in the views.
     """
     from access_requests.models import AccessRequest
     from providers.aws_identity_center import AWSIdentityCenterProvider
@@ -281,6 +448,7 @@ def deprovision_access(request_id: int):
     if not reference_id:
         logger.warning(f'No provider reference ID for request {request_id}')
         access_request.mark_expired()
+        _log_expired(access_request, trigger)
         return
 
     try:
@@ -306,6 +474,10 @@ def deprovision_access(request_id: int):
         elif role.provider == 'ENTRA':
             provider = EntraPIMProvider()
             success = provider.deprovision_access(reference_id)
+        elif role.provider == 'VAULT':
+            from vault.provider import VaultProvider
+            provider = VaultProvider()
+            success = provider.deprovision_access(reference_id)
         else:
             logger.error(f'Unknown provider: {role.provider}')
             return
@@ -313,6 +485,7 @@ def deprovision_access(request_id: int):
         if success:
             access_request.mark_expired()
             logger.info(f'Successfully deprovisioned access for request {request_id}')
+            _log_expired(access_request, trigger)
         else:
             logger.error(f'Deprovisioning failed for request {request_id}')
 

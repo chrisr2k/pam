@@ -42,7 +42,14 @@
                             <i class="bi bi-shield-check"></i> Roles
                         </a>
                     </li>
-                    {% if user.is_approver %}
+                    {% if user.is_staff or user.is_admin_user %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'vault:list' %}">
+                            <i class="bi bi-safe2"></i> Vault
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if user.is_approver or user.approvable_roles.count %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'requests:pending_approvals' %}">
                             <i class="bi bi-check2-square"></i> Approvals
@@ -60,6 +67,11 @@
                             <i class="bi bi-people-fill"></i> Sessions
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" href="{% url 'requests:break_glass' %}">
+                            <i class="bi bi-fire"></i> Break Glass
+                        </a>
+                    </li>
                     {% endif %}
                     {% if user.is_auditor or user.is_admin_user %}
                     <li class="nav-item">
@@ -73,6 +85,13 @@
                             <i class="bi bi-search"></i> Reviews
                         </a>
                     </li>
+                    {% if user.is_staff or user.is_admin_user %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'threat:list' %}">
+                            <i class="bi bi-exclamation-triangle"></i> Alerts
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">
@@ -82,10 +101,20 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">Profile</a></li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'accounts:mfa_setup' %}">
+                                    <i class="bi bi-shield-lock"></i> MFA Setup
+                                    {% if user.mfa_enrolled %}<span class="badge bg-success ms-1">On</span>{% endif %}
+                                </a>
+                            </li>
+                            <li><a class="dropdown-item" href="{% url 'accounts:help' %}"><i class="bi bi-question-circle"></i> Help</a></li>
                             {% if user.is_staff %}
                             <li><a class="dropdown-item" href="{% url 'accounts:entra_setup' %}">Entra ID Setup</a></li>
                             <li><a class="dropdown-item" href="{% url 'accounts:aws_setup' %}">AWS Setup</a></li>
                             <li><a class="dropdown-item" href="{% url 'notifications:settings' %}">Notification Settings</a></li>
+                            <li><a class="dropdown-item" href="{% url 'audit:siem_settings' %}">SIEM Settings</a></li>
+                            <li><a class="dropdown-item" href="{% url 'threat:settings' %}">Threat Settings</a></li>
+                            <li><a class="dropdown-item" href="{% url 'scim:settings' %}">SCIM Settings</a></li>
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}">Django Admin</a></li>
                             {% endif %}
 

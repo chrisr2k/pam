@@ -1,0 +1,41 @@
+{% extends 'admin/change_form.html' %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script>
+        // Inline (never browser-cached): show/hide role provider fields
+        // (AWS / Entra / Vault) based on the selected provider.
+        (function () {
+            'use strict';
+            function toggleProviderFields() {
+                var select = document.getElementById('id_provider');
+                var provider = select ? select.value : '';
+
+                document.querySelectorAll('.aws-fields').forEach(function (el) {
+                    el.style.display = provider === 'AWS' ? '' : 'none';
+                });
+                document.querySelectorAll('.entra-fields').forEach(function (el) {
+                    el.style.display = provider === 'ENTRA' ? '' : 'none';
+                });
+                document.querySelectorAll('.vault-fields').forEach(function (el) {
+                    el.style.display = provider === 'VAULT' ? '' : 'none';
+                });
+
+                document.querySelectorAll('[data-provider-field]').forEach(function (el) {
+                    var row = el.closest('.form-row');
+                    if (row) {
+                        row.style.display =
+                            el.getAttribute('data-provider-field') === provider ? '' : 'none';
+                    }
+                });
+            }
+            document.addEventListener('DOMContentLoaded', function () {
+                toggleProviderFields();
+                var select = document.getElementById('id_provider');
+                if (select) {
+                    select.addEventListener('change', toggleProviderFields);
+                }
+            });
+        })();
+    </script>
+{% endblock %}

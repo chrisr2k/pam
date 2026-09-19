@@ -8,6 +8,7 @@ class PrivilegedRole(models.Model):
     class Provider(models.TextChoices):
         AWS = 'AWS', 'AWS Identity Center'
         ENTRA = 'ENTRA', 'Entra ID PIM'
+        VAULT = 'VAULT', 'PAM Vault'
 
     name = models.CharField(max_length=255, help_text='Display name of the role')
     description = models.TextField(blank=True, help_text='Description of what this role provides')
@@ -37,6 +38,13 @@ class PrivilegedRole(models.Model):
         help_text='Entra ID role display name',
     )
 
+    # Vault-specific field
+    vault_entry = models.OneToOneField(
+        'vault.VaultEntry', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='shim_role',
+        help_text='Vault entry backing this role (VAULT provider only)',
+    )
+
     # ABAC (Attribute-Based Access Control) via Entra ID directory attributes
     abac_enabled = models.BooleanField(
         default=False,
@@ -56,9 +64,29 @@ class PrivilegedRole(models.Model):
         default=True,
         help_text='Whether this role requires approval to activate',
     )
+    is_break_glass = models.BooleanField(
+        default=False,
+        help_text='Eligible for break-glass emergency access (enforced by BreakGlassView)',
+    )
     is_active = models.BooleanField(
         default=True,
         help_text='Whether this role is available for requests',
+    )
+
+    class ApprovalPolicy(models.TextChoices):
+        ANY_ONE = 'ANY_ONE', 'Any one approver'
+        ALL = 'ALL', 'All approvers'
+        QUORUM = 'QUORUM', 'Fixed quorum'
+
+    approval_policy = models.CharField(
+        max_length=10, choices=ApprovalPolicy.choices,
+        default=ApprovalPolicy.ANY_ONE,
+        help_text='Votes required to approve: any single approver, every current approver, or a fixed quorum count.',
+    )
+    quorum_count = models.PositiveIntegerField(
+        default=1,
+        help_text='Distinct approver votes required when policy is QUORUM. '
+                  'If the role has fewer approvers than this count, all approvers must vote.',
     )
 
     approvers = models.ManyToManyField(
@@ -86,8 +114,24 @@ class PrivilegedRole(models.Model):
             ),
         ]
 
+    def approval_threshold(self) -> int:
+        """Number of distinct approver votes needed to approve a request.
+
+        Computed dynamically at vote time: ALL uses the current approver
+        count, QUORUM is capped at the approver count so a request can never
+        become permanently unapprovable.
+        """
+        approver_count = self.approvers.count()
+        if self.approval_policy == self.ApprovalPolicy.ALL:
+            return approver_count
+        if self.approval_policy == self.ApprovalPolicy.QUORUM:
+            return min(self.quorum_count, approver_count)
+        return 1  # ANY_ONE
+
     def clean(self):
         from django.core.exceptions import ValidationError
+        if self.quorum_count < 1:
+            raise ValidationError({'quorum_count': 'Quorum count must be at least 1.'})
         if self.provider == self.Provider.AWS:
             if not self.aws_permission_set_arn:
                 raise ValidationError({'aws_permission_set_arn': 'Permission Set ARN is required for AWS roles.'})
@@ -118,6 +162,9 @@ class PrivilegedRole(models.Model):
                 raise ValidationError(
                     f'Entra role with Role ID "{self.entra_role_id}" already exists.'
                 )
+        elif self.provider == self.Provider.VAULT:
+            if not self.vault_entry_id:
+                raise ValidationError({'vault_entry': 'A vault entry is required for Vault roles.'})
 
     def save(self, *args, **kwargs):
         self.clean()
@@ -127,4 +174,6 @@ class PrivilegedRole(models.Model):
         if self.provider == self.Provider.AWS:
             account = f' [{self.aws_account_name or self.aws_account_id}]' if self.aws_account_id else ''
             return f'AWS: {self.name}{account}'
-        return f'Entra: {self.name}'
+        if self.provider == self.Provider.ENTRA:
+            return f'Entra: {self.name}'
+        return f'Vault: {self.name}'

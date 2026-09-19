@@ -17,6 +17,10 @@ class User(AbstractUser):
         ADMIN = 'ADMIN', 'Admin'
         AUDITOR = 'AUDITOR', 'Auditor'
 
+    # TOTP secret for elevation-time MFA. Encrypted at rest with the same
+    # Signer pattern as EntraConfig secrets; empty string = not enrolled.
+    _mfa_signer = Signer(salt='accounts.User.otp_secret')
+
     entra_object_id = models.CharField(
         max_length=128, unique=True, null=True, blank=True,
         help_text='Entra ID (Azure AD) object ID',
@@ -30,6 +34,11 @@ class User(AbstractUser):
         related_name='direct_reports',
         help_text='Manager for approval routing',
     )
+    otp_secret = models.CharField(
+        max_length=512, blank=True, default='',
+        help_text='Encrypted TOTP secret for elevation-time MFA (empty = not enrolled)',
+    )
+    mfa_enrolled_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f'{self.get_full_name() or self.username} ({self.get_role_display()})'
@@ -45,6 +54,49 @@ class User(AbstractUser):
     @property
     def is_auditor(self):
         return self.role == self.Role.AUDITOR
+
+    @property
+    def mfa_enrolled(self) -> bool:
+        return bool(self.otp_secret)
+
+    @property
+    def mfa_required(self) -> bool:
+        """Approvers, admins, staff — and anyone listed as a role approver —
+        must be MFA-enrolled before elevating."""
+        return (
+            self.role in (self.Role.APPROVER, self.Role.ADMIN)
+            or self.is_staff
+            or self.approvable_roles.exists()
+        )
+
+    # ── MFA Secret Management ──────────────────────────────────────────────
+
+    def get_otp_secret(self) -> str:
+        """Decrypt and return the TOTP secret."""
+        raw = self.otp_secret
+        if not raw:
+            return ''
+        if ':' in raw:
+            try:
+                return self._mfa_signer.unsign(raw)
+            except BadSignature:
+                logger.warning('Failed to decrypt otp_secret for user %s - returning raw value', self.pk)
+                return raw
+        return raw
+
+    def set_otp_secret(self, value: str) -> None:
+        """Encrypt and store the TOTP secret."""
+        if not value:
+            self.otp_secret = ''
+        else:
+            self.otp_secret = self._mfa_signer.sign(value)
+
+    def save(self, *args, **kwargs):
+        # Encrypt the TOTP secret before saving if not already encrypted
+        raw = self.otp_secret
+        if raw and ':' not in raw:
+            self.otp_secret = self._mfa_signer.sign(raw)
+        super().save(*args, **kwargs)
 
 
 class EntraConfig(models.Model):

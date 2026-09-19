@@ -191,6 +191,24 @@
                                 <br><small class="text-muted">When access is about to expire (requires scheduled task)</small>
                             </label>
                         </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_break_glass"
+                                   name="notify_on_break_glass"
+                                   {% if config.notify_on_break_glass %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_break_glass">
+                                <strong>Break Glass Triggered</strong>
+                                <br><small class="text-muted">When an admin triggers emergency access (all admins alerted)</small>
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="notify_on_threat_alert"
+                                   name="notify_on_threat_alert"
+                                   {% if config.notify_on_threat_alert %}checked{% endif %}>
+                            <label class="form-check-label" for="notify_on_threat_alert">
+                                <strong>Threat Alert</strong>
+                                <br><small class="text-muted">When a threat detection rule fires (all admins alerted)</small>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>

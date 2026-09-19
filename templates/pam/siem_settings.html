@@ -1,0 +1,122 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}SIEM Settings - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-activity"></i> SIEM Export Settings</h1>
+        {% if config.enabled and config.webhook_url %}
+        <span class="badge bg-success fs-6"><i class="bi bi-check-circle"></i> Active</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6"><i class="bi bi-x-circle"></i> Disabled</span>
+        {% endif %}
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill"></i>
+        Stream audit events to your SIEM over HTTPS. Events are forwarded in order,
+        at least once, within ~45 seconds of being written.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-activity"></i> SIEM Webhook</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="enabled" name="enabled"
+                           {% if config.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="webhook_url" class="form-label">Webhook URL</label>
+                    <input type="url" class="form-control" id="webhook_url" name="webhook_url"
+                           value="{{ config.webhook_url }}"
+                           placeholder="https://your-splunk:8088/services/collector/event">
+                    <div class="form-text">
+                        Splunk HEC endpoint, Sentinel Data Collection Endpoint (DCR), or any generic JSON webhook.
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="payload_mode" class="form-label">Payload Mode</label>
+                        <select class="form-select" id="payload_mode" name="payload_mode">
+                            <option value="splunk_hec" {% if config.payload_mode == 'splunk_hec' %}selected{% endif %}>
+                                Splunk HEC (event envelope)
+                            </option>
+                            <option value="sentinel" {% if config.payload_mode == 'sentinel' %}selected{% endif %}>
+                                Microsoft Sentinel (array)
+                            </option>
+                            <option value="generic" {% if config.payload_mode == 'generic' %}selected{% endif %}>
+                                Generic JSON (bare event)
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="token_header" class="form-label">Auth Header Name</label>
+                        <input type="text" class="form-control" id="token_header" name="token_header"
+                               value="{{ config.token_header }}" placeholder="Authorization">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="token_prefix" class="form-label">Auth Header Prefix</label>
+                        <input type="text" class="form-control" id="token_prefix" name="token_prefix"
+                               value="{{ config.token_prefix }}" placeholder="Splunk  (or Bearer )">
+                        <div class="form-text">Leave blank to send the token bare.</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="api_token" class="form-label">API Token</label>
+                    <input type="password" class="form-control" id="api_token" name="api_token"
+                           placeholder="{% if config.get_api_token %}•••••••• (leave blank to keep current){% else %}Enter HEC/DCR token{% endif %}" autocomplete="off">
+                    {% if config.get_api_token %}
+                    <div class="form-text text-success">
+                        <i class="bi bi-check-circle-fill"></i> Token is stored (encrypted at rest)
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="action_filter" class="form-label">Action Filter (optional)</label>
+                    <input type="text" class="form-control" id="action_filter" name="action_filter"
+                           value="{{ config.action_filter }}"
+                           placeholder="e.g. BREAK_GLASS_TRIGGERED, ACCESS_EXPIRED">
+                    <div class="form-text">Comma-separated action names; leave blank to forward all actions.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-speedometer"></i> Forwarder Status</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Watermark (last forwarded id)</dt>
+                    <dd class="col-sm-9"><code>{{ config.watermark }}</code></dd>
+                    <dt class="col-sm-3">Last run</dt>
+                    <dd class="col-sm-9">{{ config.last_run_at|date:"M d, Y H:i"|default:"Never" }}</dd>
+                    <dt class="col-sm-3">Last success</dt>
+                    <dd class="col-sm-9">{{ config.last_success_at|date:"M d, Y H:i"|default:"Never" }}</dd>
+                    {% if config.last_error %}
+                    <dt class="col-sm-3">Last error</dt>
+                    <dd class="col-sm-9 text-danger">{{ config.last_error }} ({{ config.last_error_at|date:"M d, H:i" }})</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <a href="{% url 'requests:dashboard' %}" class="btn btn-secondary me-md-2">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

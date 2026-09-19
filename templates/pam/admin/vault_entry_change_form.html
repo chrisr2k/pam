@@ -1,0 +1,30 @@
+{% extends 'admin/change_form.html' %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script>
+        // Inline (never browser-cached): show/hide vault rotation-config
+        // fields based on the selected plugin.
+        (function () {
+            'use strict';
+            function togglePluginFields() {
+                var select = document.getElementById('id_rotation_plugin');
+                var plugin = select ? select.value : '';
+                document.querySelectorAll('[data-plugin]').forEach(function (el) {
+                    var plugins = el.getAttribute('data-plugin').split(' ');
+                    var row = el.closest('.form-row');
+                    if (row) {
+                        row.style.display = plugins.indexOf(plugin) !== -1 ? '' : 'none';
+                    }
+                });
+            }
+            document.addEventListener('DOMContentLoaded', function () {
+                togglePluginFields();
+                var select = document.getElementById('id_rotation_plugin');
+                if (select) {
+                    select.addEventListener('change', togglePluginFields);
+                }
+            });
+        })();
+    </script>
+{% endblock %}

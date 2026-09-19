@@ -33,14 +33,16 @@ class PAMAdminSite:
         """Queue registration or delegate to real site."""
         if self._real_site is not None:
             return self._real_site.register(model_or_iterable, admin_class, **options)
-        self._registrations.append((model_or_iterable, admin_class, options))
-        # Return something callable for decorator use
         if admin_class is None:
             # Used as a decorator: @admin_site.register(Model)
+            # Only the decorated class is queued — a bare (model, None) entry
+            # would shadow the real admin class with a plain ModelAdmin when
+            # the queue is replayed.
             def decorator(klass):
                 self._registrations.append((model_or_iterable, klass, options))
                 return klass
             return decorator
+        self._registrations.append((model_or_iterable, admin_class, options))
         return None
 
     def unregister(self, model_or_iterable):

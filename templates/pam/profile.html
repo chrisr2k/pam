@@ -31,7 +31,37 @@
 
                     <dt class="col-sm-4">Member Since</dt>
                     <dd class="col-sm-8">{{ user.date_joined|date:"M d, Y" }}</dd>
+
+                    <dt class="col-sm-4">MFA</dt>
+                    <dd class="col-sm-8">
+                        {% if user.mfa_enrolled %}
+                        <span class="badge bg-success">Enabled</span>
+                        <small class="text-muted">since {{ user.mfa_enrolled_at|date:"M d, Y" }}</small>
+                        {% else %}
+                        <span class="badge bg-secondary">Not enrolled</span>
+                        {% endif %}
+                        {% if user.mfa_required %}
+                        <small class="text-warning">(required for your role)</small>
+                        {% endif %}
+                    </dd>
                 </dl>
+
+                <div class="d-flex gap-2 align-items-start flex-wrap">
+                    <a href="{% url 'accounts:mfa_setup' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-shield-lock"></i>
+                        {% if user.mfa_enrolled %}Replace MFA secret{% else %}Set up MFA{% endif %}
+                    </a>
+                    {% if user.mfa_enrolled and not user.mfa_required %}
+                    <form method="post" action="{% url 'accounts:mfa_remove' %}" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="text" class="form-control form-control-sm" name="code"
+                               placeholder="Code to remove MFA" inputmode="numeric"
+                               autocomplete="one-time-code" maxlength="6" required>
+                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                onclick="return confirm('Remove MFA from your account?');">Remove</button>
+                    </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

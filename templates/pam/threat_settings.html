@@ -1,0 +1,220 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Threat Settings - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-shield-exclamation"></i> Threat Analytics Settings</h1>
+        {% if config.scan_enabled %}
+        <span class="badge bg-success fs-6"><i class="bi bi-check-circle"></i> Scanning</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6"><i class="bi bi-x-circle"></i> Disabled</span>
+        {% endif %}
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill"></i>
+        A background scan evaluates the audit stream every 60 seconds. Alerts appear on the
+        <a href="{% url 'threat:list' %}">Threat Alerts</a> page, are written to the audit log
+        (and forwarded to your SIEM), and can notify admins by email/Slack/Teams.
+        Off-hours boundaries are evaluated in the server timezone: <strong>UTC</strong>.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-toggle-on"></i> Global</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="scan_enabled" name="scan_enabled"
+                           {% if config.scan_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="scan_enabled">Enable scanning</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="cooldown_minutes" class="form-label">Alert cooldown (minutes)</label>
+                        <input type="number" class="form-control" id="cooldown_minutes"
+                               name="cooldown_minutes" value="{{ config.cooldown_minutes }}" min="1">
+                        <div class="form-text">Suppresses duplicate alerts for the same rule + subject.</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Last scan</label>
+                        <div class="form-control-plaintext">{{ config.last_run_at|date:"M d, Y H:i"|default:"Never" }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Impossible travel -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ rules.impossible_travel.label }}</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="impossible_travel_enabled" name="impossible_travel_enabled"
+                           {% if config.impossible_travel_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="impossible_travel_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="impossible_travel_window_minutes" class="form-label">Window (minutes)</label>
+                        <input type="number" class="form-control" id="impossible_travel_window_minutes"
+                               name="impossible_travel_window_minutes"
+                               value="{{ config.impossible_travel_window_minutes }}" min="1">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="impossible_travel_min_distinct_ips" class="form-label">Min distinct IPs</label>
+                        <input type="number" class="form-control" id="impossible_travel_min_distinct_ips"
+                               name="impossible_travel_min_distinct_ips"
+                               value="{{ config.impossible_travel_min_distinct_ips }}" min="2">
+                    </div>
+                </div>
+                <div class="form-text">Logins from multiple IPs across at least two /16 networks within the window.</div>
+            </div>
+        </div>
+
+        <!-- Off-hours -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ rules.off_hours_elevation.label }}</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="off_hours_enabled" name="off_hours_enabled"
+                           {% if config.off_hours_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="off_hours_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="off_hours_start" class="form-label">Off-hours start</label>
+                        <input type="time" class="form-control" id="off_hours_start"
+                               name="off_hours_start" value="{{ config.off_hours_start }}">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="off_hours_end" class="form-label">Off-hours end</label>
+                        <input type="time" class="form-control" id="off_hours_end"
+                               name="off_hours_end" value="{{ config.off_hours_end }}">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="off_hours_window_minutes" class="form-label">Window (minutes)</label>
+                        <input type="number" class="form-control" id="off_hours_window_minutes"
+                               name="off_hours_window_minutes"
+                               value="{{ config.off_hours_window_minutes }}" min="1">
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="off_hours_weekend"
+                           name="off_hours_weekend"
+                           {% if config.off_hours_weekend %}checked{% endif %}>
+                    <label class="form-check-label" for="off_hours_weekend">
+                        Treat all of Saturday/Sunday as off-hours
+                    </label>
+                </div>
+                <div class="form-text">Watches break-glass triggers, approvals, and admin revocations. A start after the end (e.g. 18:00–07:00) wraps midnight.</div>
+            </div>
+        </div>
+
+        <!-- MFA storm -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ rules.mfa_storm.label }}</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="mfa_storm_enabled" name="mfa_storm_enabled"
+                           {% if config.mfa_storm_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="mfa_storm_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="mfa_storm_threshold" class="form-label">Failed attempts threshold</label>
+                        <input type="number" class="form-control" id="mfa_storm_threshold"
+                               name="mfa_storm_threshold" value="{{ config.mfa_storm_threshold }}" min="1">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="mfa_storm_window_minutes" class="form-label">Window (minutes)</label>
+                        <input type="number" class="form-control" id="mfa_storm_window_minutes"
+                               name="mfa_storm_window_minutes"
+                               value="{{ config.mfa_storm_window_minutes }}" min="1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Checkout spike -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ rules.checkout_spike.label }}</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="checkout_spike_enabled" name="checkout_spike_enabled"
+                           {% if config.checkout_spike_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="checkout_spike_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="checkout_spike_threshold" class="form-label">Requests threshold</label>
+                        <input type="number" class="form-control" id="checkout_spike_threshold"
+                               name="checkout_spike_threshold"
+                               value="{{ config.checkout_spike_threshold }}" min="1">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="checkout_spike_window_minutes" class="form-label">Window (minutes)</label>
+                        <input type="number" class="form-control" id="checkout_spike_window_minutes"
+                               name="checkout_spike_window_minutes"
+                               value="{{ config.checkout_spike_window_minutes }}" min="1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reveal spike -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ rules.reveal_spike.label }}</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="reveal_spike_enabled" name="reveal_spike_enabled"
+                           {% if config.reveal_spike_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="reveal_spike_enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="reveal_spike_threshold" class="form-label">Reveals threshold</label>
+                        <input type="number" class="form-control" id="reveal_spike_threshold"
+                               name="reveal_spike_threshold" value="{{ config.reveal_spike_threshold }}" min="1">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="reveal_spike_window_minutes" class="form-label">Window (minutes)</label>
+                        <input type="number" class="form-control" id="reveal_spike_window_minutes"
+                               name="reveal_spike_window_minutes"
+                               value="{{ config.reveal_spike_window_minutes }}" min="1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <a href="{% url 'requests:dashboard' %}" class="btn btn-secondary me-md-2">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

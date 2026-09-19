@@ -49,6 +49,7 @@ services:
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
       AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
       AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
+      SIEM_API_TOKEN: ${SIEM_API_TOKEN:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
 
@@ -97,6 +98,7 @@ services:
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
       AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
       AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
+      SIEM_API_TOKEN: ${SIEM_API_TOKEN:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
@@ -138,6 +140,7 @@ services:
       AWS_SSO_INSTANCE_ARN: ${AWS_SSO_INSTANCE_ARN:-}
       AWS_ROLES_ANYWHERE_CERT_PATH: /app/certs/client.crt
       AWS_ROLES_ANYWHERE_KEY_PATH: /app/certs/client.key
+      SIEM_API_TOKEN: ${SIEM_API_TOKEN:-}
       OCI_VAULT_OCID: ${OCI_VAULT_OCID:-}
       OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY: ${OCI_SECRET_OCID_PAM_DJANGO_SECRET_KEY:-}
       OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET: ${OCI_SECRET_OCID_PAM_ENTRA_CLIENT_SECRET:-}
@@ -154,7 +157,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A pam beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: sh -c "until python manage.py migrate --check; do echo 'waiting for migrations...'; sleep 5; done && celery -A pam beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
 
 
   caddy:

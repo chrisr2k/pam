@@ -26,6 +26,9 @@ class PrivilegedRoleForm(forms.ModelForm):
             'entra_role_name': forms.TextInput(attrs={
                 'data-provider-field': 'ENTRA',
             }),
+            'vault_entry': forms.Select(attrs={
+                'data-provider-field': 'VAULT',
+            }),
         }
 
     def clean(self):
@@ -47,14 +50,26 @@ class PrivilegedRoleForm(forms.ModelForm):
             cleaned_data['aws_account_id'] = ''
             cleaned_data['aws_account_name'] = ''
 
+        elif provider == PrivilegedRole.Provider.VAULT:
+            if not cleaned_data.get('vault_entry'):
+                self.add_error('vault_entry', 'A vault entry is required for Vault roles.')
+            # Clear cloud-provider fields for Vault roles
+            cleaned_data['aws_permission_set_arn'] = ''
+            cleaned_data['aws_account_id'] = ''
+            cleaned_data['aws_account_name'] = ''
+            cleaned_data['entra_role_id'] = ''
+            cleaned_data['entra_role_name'] = ''
+
         return cleaned_data
 
 
 @admin_site.register(PrivilegedRole)
 class PrivilegedRoleAdmin(admin.ModelAdmin):
     form = PrivilegedRoleForm
-    list_display = ('name', 'provider', 'requires_approval', 'max_duration_minutes', 'is_active')
-    list_filter = ('provider', 'requires_approval', 'is_active')
+    # Inline show/hide JS (never browser-cached)
+    change_form_template = 'pam/admin/privilegedrole_change_form.html'
+    list_display = ('name', 'provider', 'requires_approval', 'approval_policy', 'is_break_glass', 'max_duration_minutes', 'is_active')
+    list_filter = ('provider', 'requires_approval', 'approval_policy', 'is_break_glass', 'is_active')
     search_fields = ('name', 'description', 'aws_permission_set_arn', 'entra_role_name')
     filter_horizontal = ('approvers',)
     fieldsets = (
@@ -71,10 +86,12 @@ class PrivilegedRoleAdmin(admin.ModelAdmin):
             'fields': ('entra_role_id', 'entra_role_name'),
             'description': 'Required for Entra ID roles',
         }),
+        ('PAM Vault', {
+            'classes': ('vault-fields',),
+            'fields': ('vault_entry',),
+            'description': 'Required for Vault roles (one role per vault entry)',
+        }),
         ('Policy', {
-            'fields': ('requires_approval', 'max_duration_minutes', 'approvers'),
+            'fields': ('requires_approval', 'approval_policy', 'quorum_count', 'is_break_glass', 'max_duration_minutes', 'approvers'),
         }),
     )
-
-    class Media:
-        js = ('js/admin_role_fields.js',)

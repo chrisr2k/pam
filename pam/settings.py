@@ -58,15 +58,19 @@ INSTALLED_APPS = [
     # Third party
     'crispy_forms',
     'crispy_bootstrap5',
+    'django_celery_beat',
     # Local apps
     'accounts',
     'roles',
+    'vault',
     'access_requests',
     'providers',
     'tasks',
     'audit',
     'reviews',
     'notifications',
+    'threat',
+    'scim',
 ]
 
 MIDDLEWARE = [
@@ -191,6 +195,16 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': 300.0,  # every 5 minutes
         'options': {'expires': 280.0},  # drop if previous run still in progress
     },
+    'forward-audit-events': {
+        'task': 'audit.tasks.forward_audit_events',
+        'schedule': 45.0,  # every 45 seconds
+        'options': {'expires': 40.0},  # drop if previous run still in progress
+    },
+    'scan-threats': {
+        'task': 'threat.tasks.scan_threats',
+        'schedule': 60.0,  # every 60 seconds
+        'options': {'expires': 55.0},  # drop if previous run still in progress
+    },
 }
 
 
@@ -224,3 +238,32 @@ AWS_SSO_INSTANCE_ARN = get_secret('AWS_SSO_INSTANCE_ARN', '')
 PAM_DEFAULT_MAX_HOURS = int(os.getenv('PAM_DEFAULT_MAX_HOURS', '8'))
 PAM_NOTIFICATION_EMAIL_FROM = os.getenv('PAM_NOTIFICATION_EMAIL_FROM', 'noreply@pam.local')
 PAM_BASE_URL = os.getenv('PAM_BASE_URL', '').rstrip('/')
+
+# Elevation-time MFA (TOTP)
+PAM_MFA_ISSUER = os.getenv('PAM_MFA_ISSUER', 'PAM')
+PAM_MFA_TICKET_TTL = int(os.getenv('PAM_MFA_TICKET_TTL', '600'))  # seconds
+PAM_MFA_MAX_ATTEMPTS = int(os.getenv('PAM_MFA_MAX_ATTEMPTS', '5'))
+PAM_MFA_LOCKOUT_MINUTES = int(os.getenv('PAM_MFA_LOCKOUT_MINUTES', '15'))
+
+# Break-glass emergency access
+PAM_BREAK_GLASS_DURATION_MINUTES = int(os.getenv('PAM_BREAK_GLASS_DURATION_MINUTES', '60'))
+
+# SIEM export (fallback token when not stored in the SIEMConfig DB row)
+SIEM_API_TOKEN = get_secret('SIEM_API_TOKEN', '')
+
+# SCIM provisioning (fallback token when not stored in the ScimConfig DB row)
+SCIM_BEARER_TOKEN = get_secret('SCIM_BEARER_TOKEN', '')
+
+# Explicit logging config so unhandled exceptions always leave a trace in
+# the container logs (gunicorn captures stderr).
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': True},
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+    },
+}

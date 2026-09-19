@@ -49,6 +49,12 @@ class AccessRequest(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     denial_reason = models.TextField(blank=True)
 
+    # Break-glass emergency access (skips the approval workflow)
+    is_break_glass = models.BooleanField(
+        default=False,
+        help_text='Created via the break-glass emergency flow',
+    )
+
     # Provisioning tracking
     provisioned_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)

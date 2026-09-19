@@ -18,3 +18,13 @@ class RoleDetailView(LoginRequiredMixin, DetailView):
     model = PrivilegedRole
     template_name = 'pam/role_detail.html'
     context_object_name = 'role'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.object.provider == PrivilegedRole.Provider.VAULT and self.object.vault_entry_id:
+            from vault.services import active_checkout_for
+            context['vault_checkout'] = active_checkout_for(
+                self.request.user, self.object.vault_entry_id)
+        from reviews.stats import role_usage_stats
+        context['role_usage'] = role_usage_stats(self.object, days=90)
+        return context

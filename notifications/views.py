@@ -57,6 +57,8 @@ class NotificationSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         config.notify_on_request_denied = request.POST.get('notify_on_request_denied') == 'on'
         config.notify_on_access_provisioned = request.POST.get('notify_on_access_provisioned') == 'on'
         config.notify_on_access_expiring = request.POST.get('notify_on_access_expiring') == 'on'
+        config.notify_on_break_glass = request.POST.get('notify_on_break_glass') == 'on'
+        config.notify_on_threat_alert = request.POST.get('notify_on_threat_alert') == 'on'
 
         config.configured_by = request.user
         config.save()

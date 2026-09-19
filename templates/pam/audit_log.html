@@ -23,7 +23,7 @@
                     {% for log in logs %}
                     <tr>
                         <td><small>{{ log.timestamp|date:"M d, H:i:s" }}</small></td>
-                        <td>{{ log.actor.get_full_name|default:log.actor.username|default:"System" }}</td>
+                        <td>{% if log.actor %}{{ log.actor.get_full_name|default:log.actor.username }}{% else %}<span class="text-muted">System</span>{% endif %}</td>
                         <td><span class="badge bg-secondary">{{ log.get_action_display }}</span></td>
                         <td><small>{{ log.target_type }} #{{ log.target_id }}</small></td>
                         <td><small class="text-muted">{{ log.details|default:"" }}</small></td>

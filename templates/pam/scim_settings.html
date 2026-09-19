@@ -1,0 +1,93 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}SCIM Settings - PAM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-people"></i> SCIM Provisioning Settings</h1>
+        {% if config.enabled %}
+        <span class="badge bg-success fs-6"><i class="bi bi-check-circle"></i> Enabled</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6"><i class="bi bi-x-circle"></i> Disabled</span>
+        {% endif %}
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill"></i>
+        Configures the SCIM v2 endpoint for Entra ID user provisioning. Point Entra at the
+        tenant URL below with the secret token; users are created/updated/deactivated here
+        automatically. Group provisioning is not supported (PAM role defaults to Requester).
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Endpoint</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="enabled" name="enabled"
+                           {% if config.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="enabled">Enabled</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Tenant URL (paste into Entra)</label>
+                    <code class="d-block">{{ tenant_url }}</code>
+                    {% if not config_has_base_url %}
+                    <div class="form-text text-warning">
+                        <code>PAM_BASE_URL</code> is not set — the URL above is derived from
+                        this request. Set <code>PAM_BASE_URL</code> for a stable value.
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="bearer_token" class="form-label">Secret Token</label>
+                    <input type="password" class="form-control" id="bearer_token" name="bearer_token"
+                           autocomplete="new-password"
+                           placeholder="{% if config.get_bearer_token %}•••••••• (leave blank to keep current){% else %}Generate with: openssl rand -hex 32{% endif %}">
+                    {% if config.get_bearer_token %}
+                    <div class="form-text text-success">
+                        <i class="bi bi-check-circle-fill"></i> Token is stored (encrypted at rest)
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-arrow-left-right"></i> Attribute Mapping (Entra → PAM)</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead><tr><th>Entra attribute</th><th>PAM field</th></tr></thead>
+                    <tbody>
+                        <tr><td>userPrincipalName</td><td>username (local part before @)</td></tr>
+                        <tr><td>mail</td><td>email</td></tr>
+                        <tr><td>givenName / familyName</td><td>first / last name</td></tr>
+                        <tr><td>accountEnabled</td><td>active (deprovisioning deactivates, never deletes)</td></tr>
+                        <tr><td>objectId</td><td>Entra object ID (externalId)</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-muted small mb-0">
+                    Group membership is not synchronized — the PAM role defaults to
+                    Requester; assign approver/admin roles in the Django admin.
+                </p>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <a href="{% url 'requests:dashboard' %}" class="btn btn-secondary me-md-2">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

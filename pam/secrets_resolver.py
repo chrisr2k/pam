@@ -33,6 +33,7 @@ SENSITIVE_SECRET_KEYS = [
     'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY',
     'AWS_SSO_INSTANCE_ARN',
+    'SIEM_API_TOKEN',
 ]
 
 # ── Cloud detection ────────────────────────────────────────────────────────
@@ -135,6 +136,7 @@ class AzureSecretsResolver(BaseSecretsResolver):
         'AWS_ACCESS_KEY_ID': 'pam-aws-access-key',
         'AWS_SECRET_ACCESS_KEY': 'pam-aws-secret-key',
         'AWS_SSO_INSTANCE_ARN': 'pam-aws-sso-instance-arn',
+        'SIEM_API_TOKEN': 'pam-siem-api-token',
     }
 
     def __init__(self):
@@ -176,6 +178,7 @@ class AwsSecretsResolver(BaseSecretsResolver):
         'AWS_ACCESS_KEY_ID': 'pam/AWS_ACCESS_KEY_ID',
         'AWS_SECRET_ACCESS_KEY': 'pam/AWS_SECRET_ACCESS_KEY',
         'AWS_SSO_INSTANCE_ARN': 'pam/AWS_SSO_INSTANCE_ARN',
+        'SIEM_API_TOKEN': 'pam/SIEM_API_TOKEN',
     }
 
     def __init__(self):
@@ -211,6 +214,7 @@ class GcpSecretsResolver(BaseSecretsResolver):
         'AWS_ACCESS_KEY_ID': 'pam-aws-access-key',
         'AWS_SECRET_ACCESS_KEY': 'pam-aws-secret-key',
         'AWS_SSO_INSTANCE_ARN': 'pam-aws-sso-instance-arn',
+        'SIEM_API_TOKEN': 'pam-siem-api-token',
     }
 
     def __init__(self):
@@ -262,6 +266,7 @@ class OciSecretsResolver(BaseSecretsResolver):
         'AWS_ACCESS_KEY_ID': 'pam_aws_access_key_id',
         'AWS_SECRET_ACCESS_KEY': 'pam_aws_secret_access_key',
         'AWS_SSO_INSTANCE_ARN': 'pam_aws_sso_instance_arn',
+        'SIEM_API_TOKEN': 'pam_siem_api_token',
     }
 
     def __init__(self):

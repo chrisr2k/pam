@@ -1,0 +1,80 @@
+{% extends 'pam/help/base_help.html' %}
+
+{% block help_content %}
+<h4><i class="bi bi-safe2"></i> The Vault</h4>
+<hr>
+
+<p>The vault stores <strong>secrets</strong> — passwords, SSH private keys, API tokens —
+encrypted, and lets you <strong>check them out temporarily</strong> instead of having
+them permanently. When a checkout ends, entries flagged for auto-rotation get a brand
+new random value, so any secret you saw becomes worthless.</p>
+
+<h6 class="mt-3">How to use a secret</h6>
+<ol>
+    <li><strong>Find it under Roles</strong> — vault entries appear as roles named
+        <code>Vault: &lt;name&gt;</code>.</li>
+    <li><strong>Request a checkout</strong> exactly like any access request
+        (justification + duration, approval if the entry requires it).</li>
+    <li>When the checkout is <span class="badge badge-status-provisioned">active</span>,
+        open the entry (via the role page's <em>Reveal Secret</em> button or the entry
+        link) and click <strong>Reveal Secret</strong>.</li>
+    <li>If you're enrolled in MFA, confirming your code is required.</li>
+    <li><strong>The secret is shown once.</strong> Copy it immediately — after you
+        leave the page it cannot be shown again without another reveal (each reveal
+        is audited).</li>
+    <li>The checkout expires automatically (or you can revoke it). If the entry
+        auto-rotates, the revealed value is already dead.</li>
+</ol>
+
+<h6 class="mt-4">Rotation plugins — syncing to the real system</h6>
+<p>By default, "rotation" means the vault generates a new random value and stores
+it — the target system is not touched. For entries configured with a
+<strong>rotation plugin</strong>, rotation actually reaches out and changes the
+credential on the real system (like CyberArk's CPM):</p>
+<ul>
+    <li><strong>AWS IAM access key</strong> — the entry holds the user's access key
+        pair as JSON. Rotation creates a new key, verifies it works, stores it,
+        then deletes the old key. For a brief moment the user has two active keys
+        (never zero).</li>
+    <li><strong>Entra app client secret</strong> — rotation adds a new client secret
+        to the app registration, stores it, then removes the old one. (The app
+        needs the <code>Application.ReadWrite.OwnedBy</code> permission to rotate
+        its own credentials.)</li>
+    <li><strong>SSH (Linux/Unix)</strong> — changes the account password over SSH
+        via <code>chpasswd</code> (config: <code>host</code>, <code>username</code>;
+        optional <code>use_sudo</code>).</li>
+    <li><strong>PostgreSQL</strong> — <code>ALTER USER</code> with the account's
+        current password (config: <code>host</code>, <code>username</code>).</li>
+    <li><strong>MySQL</strong> — <code>ALTER USER</code>, MySQL 8+ / MariaDB 10.2+
+        (config: <code>host</code>, <code>username</code>, optional
+        <code>host_part</code>).</li>
+    <li><strong>Windows (WinRM)</strong> — <code>net user</code> (local) or
+        <code>Set-ADAccountPassword</code> (AD) over WinRM (config:
+        <code>host</code>, <code>username</code>, optional <code>account_type</code>).</li>
+    <li><strong>Generic HTTP webhook</strong> — POSTs the new value to a URL with
+        <code>{old_value}</code>/<code>{new_value}</code> templates, optional
+        verify/cleanup requests (config: <code>url</code>).</li>
+</ul>
+<p>Password plugins (SSH, databases, Windows, HTTP) generate the new value
+<strong>before</strong> anything is changed, then apply → verify → store, with a
+best-effort rollback to the old password if verification fails. <strong>If rotation
+fails, the existing value is kept</strong> — the vault never stores a credential the
+target system doesn't have. Failures are shown in the rotation history.</p>
+
+<h6 class="mt-4">Good to know</h6>
+<ul>
+    <li><strong>Why checkouts?</strong> Anyone with a checkout is visible, time-limited,
+        and audited — exactly the audit trail permanent passwords lack.</li>
+    <li><strong>Auto-rotation</strong>: when a checkout ends, the vault rotates the
+        secret — a fresh random value for vault-only entries, or a real system
+        credential change for plugin entries.</li>
+    <li><strong>Rotation breaks old copies</strong>: after rotation, any previously
+        revealed or exported value stops working immediately. Don't use
+        auto-rotation on entries other live systems still depend on — coordinate
+        with your admins.</li>
+    <li><strong>Reveals are logged</strong> (who, which entry, when — never the value).
+        Misuse is detectable.</li>
+    <li><strong>Several people</strong> can hold checkouts for the same entry at once;
+        each reveal and rotation is tracked separately.</li>
+</ul>
+{% endblock %}

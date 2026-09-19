@@ -1,0 +1,161 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}{{ entry.name }} - PAM{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-safe2"></i> {{ entry.name }}</span>
+                <span>
+                    <span class="badge bg-secondary">{{ entry.get_secret_type_display }}</span>
+                    {% if entry.is_active %}
+                    <span class="badge bg-success">Active</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Description</dt>
+                    <dd class="col-sm-8">{{ entry.description|default:"—"|linebreaks }}</dd>
+
+                    <dt class="col-sm-4">Checkout</dt>
+                    <dd class="col-sm-8">
+                        {% if entry.requires_approval %}
+                        Requires approval · max {{ entry.max_checkout_minutes }} minutes
+                        {% else %}
+                        <span class="badge bg-warning">No approval needed</span> · max {{ entry.max_checkout_minutes }} minutes
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Auto-rotate</dt>
+                    <dd class="col-sm-8">
+                        {% if entry.auto_rotate %}
+                        <span class="text-success"><i class="bi bi-arrow-repeat"></i> New value on check-in</span>
+                        {% else %}
+                        <span class="text-muted">Off</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Rotation</dt>
+                    <dd class="col-sm-8">
+                        {% if entry.rotation_plugin %}
+                        <span class="badge bg-primary">{{ entry.rotation_plugin_label }}</span>
+                        <small class="text-muted">— new credential is pushed to the target system</small>
+                        {% else %}
+                        <span class="text-muted">Vault-only (random value)</span>
+                        {% endif %}
+                    </dd>
+
+                    {% if entry.last_rotated_at %}
+                    <dt class="col-sm-4">Last rotated</dt>
+                    <dd class="col-sm-8">{{ entry.last_rotated_at|date:"M d, Y H:i" }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        {% if entry.is_active %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-eye-fill"></i> Reveal Secret
+            </div>
+            <div class="card-body">
+                {% if checkout %}
+                <div class="alert alert-success">
+                    <i class="bi bi-unlock-fill"></i>
+                    Active checkout — expires {{ checkout.expires_at|date:"M d, Y H:i" }}
+                    ({{ checkout.expires_at|timeuntil }}).
+                </div>
+                <form method="post" action="{% url 'vault:reveal' entry.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-eye"></i> Reveal Secret
+                    </button>
+                </form>
+                <div class="form-text">Every reveal is audited. The value is shown once — copy it immediately.</div>
+                {% else %}
+                <p class="text-muted">You have no active checkout for this entry.</p>
+                {% if entry.shim_role %}
+                <a href="{% url 'requests:create' %}?role={{ entry.shim_role.pk }}"
+                   class="btn btn-outline-primary w-100">
+                    <i class="bi bi-plus-circle"></i> Request Checkout
+                </a>
+                {% else %}
+                <p class="text-muted mb-0">This entry is not available for checkout.</p>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if user.is_staff or user.is_admin_user %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-arrow-repeat"></i> Rotate Secret (staff)
+            </div>
+            <div class="card-body">
+                {% if entry.rotation_plugin %}
+                <div class="alert alert-info">
+                    Rotation is plugin-driven. The new credential will be created in
+                    {{ entry.rotation_plugin_label }}, stored here, and the old
+                    credential revoked.
+                </div>
+                <form method="post" action="{% url 'vault:rotate' entry.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-arrow-repeat"></i> Rotate Now (sync to {{ entry.rotation_plugin_label }})
+                    </button>
+                </form>
+                {% else %}
+                <form method="post" action="{% url 'vault:rotate' entry.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <input type="password" name="new_value" class="form-control"
+                               placeholder="New secret value" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-arrow-repeat"></i> Rotate Now
+                    </button>
+                </form>
+                <div class="form-text">Previously-used values are rejected.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if rotation_events %}
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Rotation History
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for event in rotation_events %}
+                <li class="list-group-item small">
+                    <span class="badge bg-{% if event.reason == 'AUTO_CHECKIN' %}info{% else %}secondary{% endif %}">
+                        {{ event.get_reason_display }}
+                    </span>
+                    {% if event.plugin and event.plugin != 'vault_only' %}
+                    <span class="badge bg-primary">{{ event.plugin }}</span>
+                    {% endif %}
+                    {% if event.synced_to_system %}
+                    <i class="bi bi-cloud-check text-success" title="Synced to target system"></i>
+                    {% endif %}
+                    {% if event.error %}
+                    <span class="badge bg-danger" title="{{ event.error }}">failed</span>
+                    {% endif %}
+                    by {{ event.rotated_by.username|default:"system" }}
+                    <span class="text-muted">{{ event.rotated_at|date:"M d, H:i" }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

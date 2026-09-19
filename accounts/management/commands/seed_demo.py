@@ -138,9 +138,39 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING('AWS-ReadOnly role already exists'))
 
+        # Create a demo vault entry (shim role is auto-created by the signal)
+        from vault.models import VaultEntry
+        demo_entry, entry_created = VaultEntry.objects.get_or_create(
+            name='Demo-Prod-DB',
+            defaults={
+                'description': 'Demo production database password',
+                'secret_type': 'PASSWORD',
+                'auto_rotate': True,
+                'requires_approval': True,
+                'max_checkout_minutes': 60,
+                'encrypted_value': 'demo-db-password',
+            },
+        )
+        if entry_created:
+            demo_entry.shim_role.approvers.add(approver)
+            self.stdout.write(self.style.SUCCESS('Created Demo-Prod-DB vault entry'))
+        else:
+            self.stdout.write(self.style.WARNING('Demo-Prod-DB vault entry already exists'))
+
         self.stdout.write(self.style.SUCCESS('\nDemo data seeded successfully!'))
         self.stdout.write('')
         self.stdout.write('Demo accounts:')
         self.stdout.write(f'  Admin:     admin / {admin_password}')
         self.stdout.write('  Approver:  approver / approver123')
         self.stdout.write('  Requester: requester / requester123')
+        self.stdout.write('')
+        self.stdout.write(self.style.WARNING(
+            'MFA is required for approvers/admins: the admin and approver accounts '
+            'must enroll at /accounts/mfa/setup/ before they can approve requests '
+            'or use break-glass access.'))
+        self.stdout.write(self.style.WARNING(
+            'AWS-ReadOnly requires no approval: requests for it auto-provision and '
+            'will fail until real AWS credentials are configured.'))
+        self.stdout.write(self.style.WARNING(
+            "Vault: the 'Demo-Prod-DB' entry auto-rotates its password whenever a "
+            'checkout expires or is revoked.'))

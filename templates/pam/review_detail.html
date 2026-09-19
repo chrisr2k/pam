@@ -4,12 +4,15 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-lg-8">
+    <div class="col-lg-9">
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-search"></i> {{ review.name }}</span>
-                <span class="badge bg-{% if review.status == 'COMPLETED' %}success{% elif review.status == 'IN_PROGRESS' %}warning{% else %}secondary{% endif %} fs-6">
-                    {{ review.get_status_display }}
+                <span>
+                    <span class="badge bg-secondary me-1">{{ progress.decided }} of {{ progress.total }} decided</span>
+                    <span class="badge bg-{% if review.status == 'COMPLETED' %}success{% elif review.status == 'IN_PROGRESS' %}warning{% else %}secondary{% endif %} fs-6">
+                        {{ review.get_status_display }}
+                    </span>
                 </span>
             </div>
             <div class="card-body">
@@ -32,6 +35,12 @@
                         {% endfor %}
                     </dd>
                 </dl>
+                {% if review.status == 'COMPLETED' %}
+                <div class="alert alert-success mb-0">
+                    <i class="bi bi-check-circle-fill"></i>
+                    Completed {{ review.completed_at|date:"M d, Y H:i" }}
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -41,30 +50,58 @@
                 <i class="bi bi-list-check"></i> Entries ({{ review.entries.count }})
             </div>
             <div class="card-body">
-                {% if review.entries.exists %}
+                {% if entries %}
                 <div class="table-responsive">
-                    <table class="table table-hover table-sm">
+                    <table class="table table-hover table-sm align-middle">
                         <thead>
                             <tr>
                                 <th>Request #</th>
                                 <th>Requester</th>
                                 <th>Role</th>
+                                <th>Usage (90d)</th>
                                 <th>Decision</th>
                                 <th>Reviewed By</th>
+                                {% if can_decide %}<th></th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
-                            {% for entry in review.entries.all %}
+                            {% for entry in entries %}
                             <tr>
                                 <td><a href="{% url 'requests:detail' entry.access_request.id %}">#{{ entry.access_request.id }}</a></td>
                                 <td>{{ entry.access_request.requester.get_full_name|default:entry.access_request.requester.username }}</td>
                                 <td>{{ entry.access_request.role.name }}</td>
                                 <td>
+                                    <small>
+                                        {{ entry.usage.request_count|default:0 }} request{{ entry.usage.request_count|default:0|pluralize }},
+                                        last {{ entry.usage.last_request_at|date:"M d"|default:"never" }}
+                                        {% if entry.usage.active_now %}<span class="badge bg-success">active</span>{% endif %}
+                                    </small>
+                                </td>
+                                <td>
                                     <span class="badge bg-{% if entry.decision == 'APPROVED' %}success{% elif entry.decision == 'REVOKED' %}danger{% else %}secondary{% endif %}">
                                         {{ entry.get_decision_display }}
                                     </span>
+                                    {% if entry.comment %}
+                                    <br><small class="text-muted">{{ entry.comment|truncatechars:60 }}</small>
+                                    {% endif %}
                                 </td>
-                                <td>{{ entry.reviewed_by.get_full_name|default:entry.reviewed_by.username|default:"-" }}</td>
+                                <td><small>{% firstof entry.reviewed_by.get_full_name entry.reviewed_by.username "-" %}</small></td>
+                                {% if can_decide %}
+                                <td class="text-end">
+                                    {% if entry.decision == 'PENDING' %}
+                                    <form method="post" action="{% url 'reviews:decide' review.pk entry.pk %}" class="d-flex gap-1">
+                                        {% csrf_token %}
+                                        <select name="decision" class="form-select form-select-sm">
+                                            <option value="APPROVED">Approve (keep)</option>
+                                            <option value="REVOKED">Revoke (remove)</option>
+                                        </select>
+                                        <input type="text" name="comment" class="form-control form-control-sm"
+                                               placeholder="Comment">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
                             </tr>
                             {% endfor %}
                         </tbody>

@@ -1,4 +1,5 @@
 import logging
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
@@ -12,6 +13,8 @@ from roles.models import PrivilegedRole
 from tasks.provisioning import provision_access, deprovision_access
 from audit.middleware import log_action
 from notifications.services import send_notification
+from .forms import AccessRequestForm
+from .services import duration_was_clamped, execute_approve, execute_create
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +33,17 @@ class DashboardView(LoginRequiredMixin, View):
             'pending_approvals': AccessRequest.objects.filter(
                 role__approvers=user,
                 status=AccessRequest.Status.PENDING,
-            ) if user.is_approver else AccessRequest.objects.none(),
+            ),
             'available_roles': PrivilegedRole.objects.filter(is_active=True),
         }
         return render(request, 'pam/dashboard.html', context)
 
 
 class RequestCreateView(LoginRequiredMixin, CreateView):
-    """Create a new access request."""
+    """Create a new access request (MFA-challenged when the user is enrolled)."""
     model = AccessRequest
+    form_class = AccessRequestForm
     template_name = 'pam/request_form.html'
-    fields = ['role', 'justification', 'requested_duration_minutes']
 
     def get_initial(self):
         """Pre-select role if ?role= query param is provided."""
@@ -59,36 +62,38 @@ class RequestCreateView(LoginRequiredMixin, CreateView):
         form.fields['role'].queryset = PrivilegedRole.objects.filter(is_active=True)
         return form
 
-
     def form_valid(self, form):
-        form.instance.requester = self.request.user
-        response = super().form_valid(form)
-        log_action(
-            actor=self.request.user,
-            action='REQUEST_CREATED',
-            target_type='AccessRequest',
-            target_id=self.object.pk,
-            details={
-                'role': self.object.role.name,
-                'provider': self.object.role.provider,
-                'duration': self.object.requested_duration_minutes,
-            },
-            request=self.request,
-        )
-        # Send notification to approvers
-        approver_emails = list(
-            self.object.role.approvers.values_list('email', flat=True)
-        )
-        send_notification(
-            self.object,
-            'request_created',
-            recipients=approver_emails,
-        )
-        messages.success(self.request, 'Access request submitted successfully.')
-        return response
-
-    def get_success_url(self):
-        return reverse('requests:detail', kwargs={'pk': self.object.pk})
+        if self.request.user.mfa_enrolled:
+            # Require a TOTP challenge before the request is created. The form
+            # data is re-submitted as hidden inputs from the challenge page and
+            # re-validated by execute_create at execution time.
+            from accounts.mfa import issue_mfa_ticket
+            from accounts.views import render_mfa_challenge
+            issue_mfa_ticket(self.request, 'create_request', '')
+            return render_mfa_challenge(
+                self.request,
+                f'Submit access request for {form.cleaned_data["role"].name}',
+                '',
+                self.request.POST,
+            )
+        access_request, _ = execute_create(
+            self.request.user, self.request.POST, request=self.request)
+        # The form was already validated by the view, so this cannot be None
+        if duration_was_clamped(self.request.POST, access_request):
+            messages.warning(
+                self.request,
+                f'Requested duration exceeds the '
+                f'{access_request.role.max_duration_minutes}-minute maximum '
+                f'for this role and was reduced.',
+            )
+        if access_request.status == AccessRequest.Status.APPROVED:
+            messages.success(
+                self.request,
+                'Access granted automatically — this role does not require approval.',
+            )
+        else:
+            messages.success(self.request, 'Access request submitted successfully.')
+        return redirect('requests:detail', pk=access_request.pk)
 
 
 class RequestDetailView(LoginRequiredMixin, DetailView):
@@ -100,14 +105,21 @@ class RequestDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['approvals'] = self.object.approvals.all()
+        context['user_approval'] = self.object.approvals.filter(
+            approver=self.request.user).first()
+        context['approval_votes'] = self.object.approvals.filter(
+            decision=Approval.Decision.APPROVED).count()
+        context['approval_threshold'] = self.object.role.approval_threshold()
+        context['approver_count'] = self.object.role.approvers.count()
         return context
 
 
-class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
-    """Approve a pending access request."""
+class ApproveRequestView(LoginRequiredMixin, View):
+    """Approve a pending access request (MFA-challenged when enrolled).
 
-    def test_func(self):
-        return self.request.user.is_approver
+    Authorization is per-role membership (checked in post); being listed as
+    an approver of the role is what grants approval, regardless of PAM role.
+    """
 
     def post(self, request, pk):
         access_request = get_object_or_404(AccessRequest, pk=pk, status=AccessRequest.Status.PENDING)
@@ -122,58 +134,55 @@ class ApproveRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.error(request, 'You are not authorized to approve requests for this role.')
             return redirect('requests:detail', pk=access_request.pk)
 
-        # Record approval
-        Approval.objects.create(
-            request=access_request,
-            approver=request.user,
-            decision=Approval.Decision.APPROVED,
-            comment=request.POST.get('comment', ''),
-        )
+        # One ballot per approver: don't issue a pointless MFA challenge
+        if access_request.approvals.filter(approver=request.user).exists():
+            messages.info(request, 'You have already approved this request.')
+            return redirect('requests:detail', pk=access_request.pk)
 
-        access_request.approve(request.user)
-        log_action(
-            actor=request.user,
-            action='REQUEST_APPROVED',
-            target_type='AccessRequest',
-            target_id=access_request.pk,
-            details={
-                'requester': access_request.requester.email,
-                'role': access_request.role.name,
-                'provider': access_request.role.provider,
-            },
+        # MFA gate: approvers/admins must be enrolled before approving; when
+        # enrolled, the approval is recorded only after a TOTP challenge.
+        if request.user.mfa_required and not request.user.mfa_enrolled:
+            messages.error(request, 'MFA enrollment is required before you can approve requests.')
+            return redirect('accounts:mfa_setup')
+        if request.user.mfa_enrolled:
+            from accounts.mfa import issue_mfa_ticket
+            from accounts.views import render_mfa_challenge
+            issue_mfa_ticket(request, 'approve_request', access_request.pk)
+            return render_mfa_challenge(
+                request,
+                f'Approve request #{access_request.pk} for {access_request.role.name}',
+                access_request.pk,
+                request.POST,
+            )
+
+        ok, err, outcome = execute_approve(
+            request.user,
+            access_request.pk,
+            comment=request.POST.get('comment', ''),
             request=request,
         )
-        messages.success(request, f'Request #{access_request.id} approved.')
-
-        # Send notification to requester
-        send_notification(
-            access_request,
-            'request_approved',
-            recipients=[access_request.requester.email],
-        )
-
-        # Provision access in the background.
-        # We use a thread so the redirect happens immediately and the user
-        # sees the detail page with "PROVISIONING" status. The live-updates
-        # JS will update the status when provisioning completes.
-        import threading
-        from tasks.provisioning import provision_access_sync
-        t = threading.Thread(
-            target=provision_access_sync,
-            args=(access_request.id,),
-            daemon=True,
-        )
-        t.start()
-
+        if not ok:
+            messages.error(request, err)
+            return redirect('requests:detail', pk=access_request.pk)
+        if outcome == 'vote_recorded':
+            messages.success(
+                request,
+                'Your approval has been recorded. Additional approvals are '
+                'needed before access is granted.',
+            )
+        elif outcome == 'duplicate_vote':
+            messages.info(request, 'You have already approved this request.')
+        else:
+            messages.success(request, f'Request #{access_request.id} approved.')
         return redirect('requests:detail', pk=access_request.pk)
 
 
 
-class DenyRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
-    """Deny a pending access request."""
+class DenyRequestView(LoginRequiredMixin, View):
+    """Deny a pending access request.
 
-    def test_func(self):
-        return self.request.user.is_approver
+    Authorization is per-role membership (checked in post), like approval.
+    """
 
     def post(self, request, pk):
         access_request = get_object_or_404(AccessRequest, pk=pk, status=AccessRequest.Status.PENDING)
@@ -220,12 +229,12 @@ class DenyRequestView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect('requests:detail', pk=access_request.pk)
 
 
-class PendingApprovalsView(LoginRequiredMixin, UserPassesTestMixin, ListView):
-    """List all pending approvals for the current user."""
+class PendingApprovalsView(LoginRequiredMixin, ListView):
+    """List all pending approvals for the current user.
 
-    def test_func(self):
-        return self.request.user.is_approver
-
+    The queryset self-scopes to roles where the user is an approver, so no
+    additional PAM-role gate is needed (role approvers may have any PAM role).
+    """
     model = AccessRequest
     template_name = 'pam/pending_approvals.html'
     context_object_name = 'requests'
@@ -288,7 +297,8 @@ class AdminRevokeAccessView(LoginRequiredMixin, UserPassesTestMixin, View):
         )
 
         from tasks.provisioning import deprovision_access_sync
-        deprovision_access_sync(access_request.id)
+        # trigger='revoked': the ADMIN_REVOKED row below is the audit event
+        deprovision_access_sync(access_request.id, trigger='revoked')
 
         log_action(
             actor=request.user,
@@ -324,7 +334,8 @@ class RevokeAccessView(LoginRequiredMixin, View):
 
 
         from tasks.provisioning import deprovision_access_sync
-        deprovision_access_sync(access_request.id)
+        # trigger='revoked': the ACCESS_REVOKED row below is the audit event
+        deprovision_access_sync(access_request.id, trigger='revoked')
 
         log_action(
             actor=request.user,
@@ -340,4 +351,41 @@ class RevokeAccessView(LoginRequiredMixin, View):
         )
         messages.success(request, f'Access to {access_request.role.name} has been revoked.')
         return redirect('requests:dashboard')
+
+
+class BreakGlassView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Break-glass emergency access: admins trigger a flagged role immediately.
+
+    Skips the approval workflow; MFA challenge is mandatory. Duration is
+    clamped to min(role.max_duration_minutes, PAM_BREAK_GLASS_DURATION_MINUTES).
+    """
+
+    def test_func(self):
+        return self.request.user.is_admin_user or self.request.user.is_staff
+
+    def get(self, request):
+        roles = PrivilegedRole.objects.filter(is_active=True, is_break_glass=True)
+        return render(request, 'pam/break_glass.html', {
+            'roles': roles,
+            'default_duration': settings.PAM_BREAK_GLASS_DURATION_MINUTES,
+        })
+
+    def post(self, request):
+        role = get_object_or_404(
+            PrivilegedRole, pk=request.POST.get('role'), is_active=True, is_break_glass=True)
+
+        # MFA is mandatory for break-glass, regardless of enrollment status
+        if not request.user.mfa_enrolled:
+            messages.error(request, 'You must set up MFA before using break-glass access.')
+            return redirect('accounts:mfa_setup')
+
+        from accounts.mfa import issue_mfa_ticket
+        from accounts.views import render_mfa_challenge
+        issue_mfa_ticket(request, 'break_glass', role.pk)
+        return render_mfa_challenge(
+            request,
+            f'Break glass: {role.name}',
+            role.pk,
+            request.POST,
+        )
 

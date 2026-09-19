@@ -147,7 +147,7 @@
                     <i class="bi bi-check-circle-fill"></i>
                     Entra ID is configured. Users can sign in with Microsoft.
                     {% if config.configured_by %}
-                    <br>Last configured by <strong>{{ config.configured_by.get_full_name|default:config.configured_by.username }}</strong>
+                    <br>Last configured by <strong>{% firstof config.configured_by.get_full_name config.configured_by.username "Not set" %}</strong>
                     on <strong>{{ config.configured_at|date:"M d, Y H:i" }}</strong>.
                     {% endif %}
                 </div>

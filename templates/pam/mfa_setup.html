@@ -1,0 +1,69 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}MFA Setup - PAM{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-shield-lock"></i> Multi-Factor Authentication
+            </div>
+            <div class="card-body">
+                {% if required %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Your role requires MFA before you can approve requests or use break-glass access.
+                </div>
+                {% endif %}
+
+                {% if user.mfa_enrolled %}
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle-fill"></i>
+                    MFA is enabled{% if user.mfa_enrolled_at %} since {{ user.mfa_enrolled_at|date:"M d, Y H:i" }}{% endif %}.
+                    Re-enrolling below will <strong>replace</strong> your current secret.
+                </div>
+                {% else %}
+                <p>Scan the QR code with your authenticator app (Microsoft Authenticator, Google
+                    Authenticator, 1Password, &hellip;) or enter the secret manually.</p>
+                {% endif %}
+
+                <div class="text-center my-3">
+                    {{ qr_svg|safe }}
+                </div>
+
+                <dl class="row">
+                    <dt class="col-sm-3">Secret</dt>
+                    <dd class="col-sm-9"><code>{{ secret }}</code></dd>
+                    <dt class="col-sm-3">otpauth URI</dt>
+                    <dd class="col-sm-9 text-break"><code>{{ otpauth_uri }}</code></dd>
+                </dl>
+
+                <hr>
+                <p>Enter the 6-digit code from your authenticator app to activate:</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label" for="mfa-code">Verification code</label>
+                        <input type="text" class="form-control" id="mfa-code" name="code"
+                               inputmode="numeric" autocomplete="one-time-code"
+                               maxlength="7" required autofocus
+                               oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6)">
+                        <div class="form-text">Spaces are ignored — e.g. "123 456" works.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> Activate MFA
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* QR codes generated without a viewBox get fixed dimensions; keep them compact */
+    .card svg { max-width: 200px; height: auto; }
+</style>
+{% endblock %}

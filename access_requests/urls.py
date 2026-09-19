@@ -15,5 +15,6 @@ urlpatterns = [
     path('<int:pk>/revoke/', views.RevokeAccessView.as_view(), name='revoke'),
     path('admin/revoke/<int:pk>/', views.AdminRevokeAccessView.as_view(), name='admin_revoke'),
     path('sessions/', views.ActiveSessionsView.as_view(), name='active_sessions'),
+    path('break-glass/', views.BreakGlassView.as_view(), name='break_glass'),
     path('poll/', live_updates.poll_updates, name='poll'),
 ]

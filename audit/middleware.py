@@ -49,7 +49,14 @@ def log_action(actor, action, target_type='', target_id='', details=None, reques
 
     ip_address = None
     if request:
-        ip_address = request.META.get('REMOTE_ADDR')
+        # Prefer the first X-Forwarded-For hop (Caddy appends the real client
+        # IP). Hardening note: if the web container is ever published directly,
+        # prefer REMOTE_ADDR when it is not a private/loopback address.
+        xff = request.META.get('HTTP_X_FORWARDED_FOR')
+        if xff:
+            ip_address = xff.split(',')[0].strip()
+        else:
+            ip_address = request.META.get('REMOTE_ADDR')
 
     AuditLog.objects.create(
         actor=actor,

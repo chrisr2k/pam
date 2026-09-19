@@ -62,6 +62,14 @@ class NotificationConfig(models.Model):
         default=False, verbose_name='Access Expiring Soon',
         help_text='Send notification when access is about to expire',
     )
+    notify_on_break_glass = models.BooleanField(
+        default=True, verbose_name='Break Glass Triggered',
+        help_text='Send notification when break-glass emergency access is triggered',
+    )
+    notify_on_threat_alert = models.BooleanField(
+        default=True, verbose_name='Threat Alert',
+        help_text='Send notification when a threat detection rule fires',
+    )
 
     configured_at = models.DateTimeField(auto_now=True)
     configured_by = models.ForeignKey(

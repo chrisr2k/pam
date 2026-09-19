@@ -81,6 +81,99 @@ class PrivilegedRoleModelTests(TestCase):
         self.assertTrue(self.role.is_active)
 
 
+class PrivilegedRoleQuorumTests(TestCase):
+    """Test the per-role approval quorum fields."""
+
+    def setUp(self):
+        self.approvers = [
+            User.objects.create_user(username=f'approver{i}', password='testpass')
+            for i in range(3)
+        ]
+
+    def _make_role(self, policy, quorum_count=1):
+        role = PrivilegedRole.objects.create(
+            name=f'Role-{policy}',
+            provider='AWS',
+            aws_permission_set_arn=f'ps-{policy}',
+            approval_policy=policy,
+            quorum_count=quorum_count,
+        )
+        role.approvers.add(*self.approvers)
+        return role
+
+    def test_default_approval_policy_is_any_one(self):
+        """New roles default to ANY_ONE with quorum_count 1."""
+        role = PrivilegedRole.objects.create(
+            name='Default-Role',
+            provider='AWS',
+            aws_permission_set_arn='ps-default',
+        )
+        self.assertEqual(role.approval_policy, PrivilegedRole.ApprovalPolicy.ANY_ONE)
+        self.assertEqual(role.quorum_count, 1)
+
+    def test_quorum_count_validation_rejects_zero(self):
+        """quorum_count below 1 is rejected by clean()."""
+        role = PrivilegedRole(
+            name='Bad-Quorum',
+            provider='AWS',
+            aws_permission_set_arn='ps-bad-quorum',
+            quorum_count=0,
+        )
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            role.full_clean()
+
+    def test_approval_threshold_per_policy(self):
+        """ANY_ONE→1, ALL→approver count, QUORUM→quorum_count."""
+        self.assertEqual(
+            self._make_role(PrivilegedRole.ApprovalPolicy.ANY_ONE).approval_threshold(), 1)
+        self.assertEqual(
+            self._make_role(PrivilegedRole.ApprovalPolicy.ALL).approval_threshold(), 3)
+        self.assertEqual(
+            self._make_role(PrivilegedRole.ApprovalPolicy.QUORUM, quorum_count=2)
+            .approval_threshold(), 2)
+
+    def test_approval_threshold_caps_at_approver_count(self):
+        """A QUORUM above the approver count is capped at the approver count."""
+        role = self._make_role(PrivilegedRole.ApprovalPolicy.QUORUM, quorum_count=5)
+        self.assertEqual(role.approval_threshold(), 3)
+
+
+class PrivilegedRoleVaultTests(TestCase):
+    """Test the VAULT provider linkage."""
+
+    def setUp(self):
+        from vault.models import VaultEntry
+        self.entry = VaultEntry.objects.create(
+            name='Prod-DB', secret_type='PASSWORD', encrypted_value='pw')
+        # The post_save signal auto-creates the shim role
+        self.shim = self.entry.shim_role
+
+    def test_shim_role_passes_full_clean(self):
+        """The auto-created VAULT shim role is valid."""
+        self.shim.full_clean()  # should not raise
+        self.assertEqual(self.shim.provider, PrivilegedRole.Provider.VAULT)
+
+    def test_vault_role_requires_entry(self):
+        """A VAULT role without an entry fails validation."""
+        from django.core.exceptions import ValidationError
+        role = PrivilegedRole(
+            name='Bad-Vault-Role',
+            provider=PrivilegedRole.Provider.VAULT,
+        )
+        with self.assertRaises(ValidationError):
+            role.full_clean()
+
+    def test_one_shim_per_entry(self):
+        """A second VAULT role for the same entry violates the OneToOne."""
+        with self.assertRaises(Exception):
+            PrivilegedRole.objects.create(
+                name='Vault: Prod-DB Duplicate',
+                provider=PrivilegedRole.Provider.VAULT,
+                vault_entry=self.entry,
+            )
+
+
 class RoleListViewTests(TestCase):
     """Test the role list view."""
 

@@ -1,0 +1,58 @@
+{% extends 'pam/help/base_help.html' %}
+
+{% block help_content %}
+<h4><i class="bi bi-send"></i> Requests &amp; Approvals</h4>
+<hr>
+
+<h6 class="mt-3">Requesting access</h6>
+<ol>
+    <li>Go to <strong>New Request</strong> (or click <em>Request Access</em> on a role).</li>
+    <li>Pick the role, write a <strong>justification</strong> (required — auditors read it),
+        and choose a duration. Durations above the role's maximum are automatically
+        reduced, with a warning.</li>
+    <li>Submit. If you've enrolled in MFA, you'll confirm with a 6-digit code.</li>
+    <li>Track it on <strong>My Requests</strong> or the request's detail page.</li>
+</ol>
+
+<h6 class="mt-4">What happens next</h6>
+<ul>
+    <li>Requests wait at <span class="badge badge-status-pending">PENDING</span> until
+        enough approvers vote (see quorum below).</li>
+    <li>Some roles <strong>don't require approval</strong> — those grant immediately and
+        provision in the background.</li>
+    <li>Once approved, access is created in the cloud provider and becomes active
+        until it <strong>expires automatically</strong>. No one has to remember to
+        remove it.</li>
+    <li>You can <strong>revoke</strong> your own access early from the request page
+        or the dashboard — do this as soon as you're done.</li>
+</ul>
+
+<h6 class="mt-4">Approving requests</h6>
+<ul>
+    <li>Requests needing <em>your</em> approval appear under <strong>Approvals</strong>
+        (and on your dashboard). You must be listed as an approver of that role.</li>
+    <li><strong>Approving requires MFA</strong>: enter your authenticator code on the
+        "Verify Your Identity" page to record your vote.</li>
+    <li><strong>Quorum:</strong> each role decides how many votes are needed —
+        any one approver, all approvers, or a fixed number. The detail page shows
+        live progress ("2 of 3 approved"). Your vote counts immediately even when
+        more are needed.</li>
+    <li><strong>Deny</strong> rejects the request outright, at any point — no quorum
+        needed to say no.</li>
+    <li>One vote per approver: after voting you'll see "You approved this request"
+        instead of the buttons.</li>
+</ul>
+
+<h6 class="mt-4">Lifecycle cheat sheet</h6>
+<p>
+    <span class="badge badge-status-pending">PENDING</span> awaiting votes ·
+    <span class="badge badge-status-approved">APPROVED</span> quorum met ·
+    <span class="badge badge-status-provisioning">PROVISIONING</span> granting now ·
+    <span class="badge badge-status-provisioned">PROVISIONED</span> active —
+    expires at the shown time ·
+    <span class="badge badge-status-denied">DENIED</span> declined ·
+    <span class="badge badge-status-failed">FAILED</span> provisioning error (tell an
+    admin) ·
+    <span class="badge badge-status-expired">EXPIRED</span> done — access removed.
+</p>
+{% endblock %}

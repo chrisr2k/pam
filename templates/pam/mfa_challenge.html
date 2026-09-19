@@ -1,0 +1,68 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Verify Identity - PAM{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-5">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-shield-lock-fill"></i> Verify Your Identity
+            </div>
+            <div class="card-body">
+                <p class="mb-3">Action: <strong>{{ action_label }}</strong></p>
+
+                {% if refreshed %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    This page was refreshed. If your action cannot be completed, return to the
+                    originating page and retry.
+                </div>
+                {% endif %}
+
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                <p class="small text-muted">
+                    If the challenge is stale or expired, go back to the request page and
+                    click Approve again — each challenge can only be used once.
+                </p>
+                {% endif %}
+
+                {% if locked %}
+                <div class="alert alert-danger">
+                    <i class="bi bi-lock-fill"></i>
+                    Too many failed attempts. Please wait
+                    <span data-lockout-seconds="{{ lockout_seconds }}">{{ lockout_seconds }}</span> seconds
+                    before retrying.
+                </div>
+                {% else %}
+                {% if attempts_remaining < 3 %}
+                <div class="alert alert-warning">
+                    {{ attempts_remaining }} attempt{{ attempts_remaining|pluralize }} remaining before lockout.
+                </div>
+                {% endif %}
+                <form method="post" action="{% url 'accounts:mfa_challenge' %}">
+                    {% csrf_token %}
+                    {% for name, value in hidden_fields %}
+                    <input type="hidden" name="{{ name }}" value="{{ value }}">
+                    {% endfor %}
+                    <input type="hidden" name="ticket" value="{{ ticket }}">
+                    <input type="hidden" name="target_id" value="{{ target_id }}">
+                    <div class="mb-3">
+                        <label class="form-label" for="challenge-code">6-digit code from your authenticator app</label>
+                        <input type="text" class="form-control form-control-lg text-center" id="challenge-code"
+                               name="code" inputmode="numeric" autocomplete="one-time-code"
+                               maxlength="7" required autofocus
+                               oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6)">
+                        <div class="form-text">Spaces are ignored — e.g. "123 456" works.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check-circle"></i> Verify &amp; Continue
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

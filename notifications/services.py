@@ -7,12 +7,16 @@ from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
 from .models import NotificationConfig
 
 logger = logging.getLogger(__name__)
+
+User = get_user_model()
 
 
 def _build_request_url(request_obj):
@@ -110,6 +114,7 @@ def _email_subject_and_body(payload):
         'request_denied': f'[PAM] Request #{payload["request_id"]} Denied - {role}',
         'access_provisioned': f'[PAM] Access Provisioned - {role} for {requester}',
         'access_expiring': f'[PAM] Access Expiring Soon - {role} for {requester}',
+        'break_glass_triggered': f'[PAM] BREAK GLASS: {role} activated by {requester}',
     }
     subject = subjects.get(event, f'[PAM] Notification - Request #{payload["request_id"]}')
 
@@ -154,6 +159,7 @@ def _send_slack(config, payload):
         'request_denied': '#dc3545',
         'access_provisioned': '#198754',
         'access_expiring': '#ffc107',
+        'break_glass_triggered': '#dc3545',
     }
     color = colors.get(event, '#6c757d')
 
@@ -298,6 +304,7 @@ def send_notification(request_obj, event_type, extra_context=None, recipients=No
         'request_denied': config.notify_on_request_denied,
         'access_provisioned': config.notify_on_access_provisioned,
         'access_expiring': config.notify_on_access_expiring,
+        'break_glass_triggered': config.notify_on_break_glass,
     }
 
     if not event_flags.get(event_type, True):
@@ -317,3 +324,183 @@ def send_notification(request_obj, event_type, extra_context=None, recipients=No
     # Send via Teams
     if config.teams_enabled:
         _send_teams(config, payload)
+
+
+# ─── Threat alert notifications ──────────────────────────────────────────────
+
+
+def _build_alert_url(alert):
+    """Absolute URL to the alerts page filtered to the alert's rule."""
+    import os
+    from django.conf import settings
+    try:
+        path = reverse('threat:list') + f'?rule={alert.rule}'
+        base_url = (
+            getattr(settings, 'PAM_BASE_URL', '')
+            or os.getenv('EXTERNAL_URL', '')
+            or 'http://localhost:8080'
+        )
+        return f'{base_url.rstrip("/")}{path}'
+    except Exception:
+        return f'http://localhost:8080/threat/?rule={alert.rule}'
+
+
+def _build_alert_payload(alert):
+    """Build a channel-agnostic payload for a threat alert."""
+    rule_label = alert.rule
+    try:
+        from threat.rules import RULES
+        rule_label = RULES[alert.rule].label
+    except Exception:
+        pass
+    return {
+        'event_type': 'threat_alert',
+        'alert_id': alert.pk,
+        'rule': alert.rule,
+        'rule_label': rule_label,
+        'severity': alert.severity,
+        'severity_display': alert.get_severity_display(),
+        'summary': alert.summary,
+        'details_pretty': json.dumps(alert.details or {}, indent=2),
+        'related_audit_ids': ', '.join(str(i) for i in (alert.related_audit_ids or [])),
+        'created_at': _format_datetime(alert.created_at),
+        'alert_url': _build_alert_url(alert),
+    }
+
+
+def _alert_email_subject_and_body(payload):
+    subject = f"[PAM] THREAT ALERT [{payload['severity']}]: {payload['summary']}"
+    body = f"""
+    <html><body style="font-family: Arial, sans-serif; max-width: 600px;">
+    <h2 style="color: #dc3545;">Threat Alert</h2>
+    <hr>
+    <table style="border-collapse: collapse; width: 100%;">
+        <tr><td style="padding: 8px; font-weight: bold;">Rule:</td><td>{payload['rule_label']}</td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Severity:</td><td>{payload['severity_display']}</td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Summary:</td><td>{payload['summary']}</td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Time:</td><td>{payload['created_at']}</td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Details:</td><td><pre>{payload['details_pretty']}</pre></td></tr>
+        <tr><td style="padding: 8px; font-weight: bold;">Related audit IDs:</td><td>{payload['related_audit_ids']}</td></tr>
+    </table>
+    <p><a href="{payload['alert_url']}" style="display: inline-block; padding: 10px 20px; background: #dc3545; color: white; text-decoration: none; border-radius: 4px;">View Alerts</a></p>
+    <hr>
+    <p style="color: #6c757d; font-size: 12px;">This is an automated notification from PAM.</p>
+    </body></html>
+    """
+    return subject, body
+
+
+def _send_alert_slack(config, payload):
+    """Send a threat alert to a Slack webhook."""
+    if not config.slack_enabled or not config.slack_webhook_url:
+        return False
+
+    colors = {'CRITICAL': '#dc3545', 'WARNING': '#ffc107', 'INFO': '#0d6efd'}
+    blocks = [
+        {
+            'type': 'header',
+            'text': {'type': 'plain_text',
+                     'text': f':warning: THREAT ALERT [{payload["severity"]}]'},
+        },
+        {'type': 'divider'},
+        {
+            'type': 'section',
+            'fields': [
+                {'type': 'mrkdwn', 'text': f'*Rule:*\n{payload["rule_label"]}'},
+                {'type': 'mrkdwn', 'text': f'*Severity:*\n{payload["severity_display"]}'},
+                {'type': 'mrkdwn', 'text': f'*Summary:*\n{payload["summary"]}'},
+                {'type': 'mrkdwn', 'text': f'*Time:*\n{payload["created_at"]}'},
+            ],
+        },
+        {
+            'type': 'section',
+            'text': {'type': 'mrkdwn', 'text': f'```{payload["details_pretty"]}```'},
+        },
+        {
+            'type': 'actions',
+            'elements': [
+                {
+                    'type': 'button',
+                    'text': {'type': 'plain_text', 'text': 'View Alerts'},
+                    'url': payload['alert_url'],
+                    'style': 'danger',
+                },
+            ],
+        },
+    ]
+
+    slack_payload = {
+        'text': f"PAM THREAT ALERT [{payload['severity']}]: {payload['summary']}",
+        'attachments': [{'color': colors.get(payload['severity'], '#6c757d'), 'blocks': blocks}],
+    }
+    if config.slack_channel:
+        slack_payload['channel'] = config.slack_channel
+
+    return _post_webhook(config.slack_webhook_url, slack_payload)
+
+
+def _send_alert_teams(config, payload):
+    """Send a threat alert to a Teams webhook (MessageCard)."""
+    if not config.teams_enabled or not config.teams_webhook_url:
+        return False
+
+    theme_colors = {'CRITICAL': 'dc3545', 'WARNING': 'ffc107', 'INFO': '0d6efd'}
+    card = {
+        '@type': 'MessageCard',
+        '@context': 'https://schema.org/extensions',
+        'summary': f"PAM THREAT ALERT [{payload['severity']}]: {payload['summary']}",
+        'themeColor': theme_colors.get(payload['severity'], '6c757d'),
+        'title': f"THREAT ALERT [{payload['severity']}]",
+        'sections': [
+            {
+                'facts': [
+                    {'title': 'Rule', 'value': payload['rule_label']},
+                    {'title': 'Severity', 'value': payload['severity_display']},
+                    {'title': 'Summary', 'value': payload['summary']},
+                    {'title': 'Time', 'value': payload['created_at']},
+                    {'title': 'Details', 'value': payload['details_pretty']},
+                ],
+                'markdown': True,
+            },
+            {
+                'potentialAction': [
+                    {
+                        '@type': 'OpenUri',
+                        'name': 'View Alerts',
+                        'targets': [{'os': 'default', 'uri': payload['alert_url']}],
+                    },
+                ],
+            },
+        ],
+    }
+    return _post_webhook(config.teams_webhook_url, card)
+
+
+def send_alert_notification(alert):
+    """Send a threat-alert notification across enabled channels.
+
+    Email goes to all ADMIN-role and staff users (skipped when none have
+    email addresses); Slack/Teams fire per their channel configuration.
+    """
+    config = NotificationConfig.get_config()
+    if not (config.notify_on_threat_alert and config.is_any_enabled()):
+        return
+
+    payload = _build_alert_payload(alert)
+
+    if config.email_enabled:
+        recipients = list(
+            User.objects.filter(Q(role=User.Role.ADMIN) | Q(is_staff=True))
+            .exclude(email='')
+            .values_list('email', flat=True))
+        if recipients:
+            subject, body = _alert_email_subject_and_body(payload)
+            _send_email(config, subject, body, recipients)
+        else:
+            logger.debug('No admin/staff email addresses configured; skipping alert email.')
+
+    if config.slack_enabled:
+        _send_alert_slack(config, payload)
+
+    if config.teams_enabled:
+        _send_alert_teams(config, payload)

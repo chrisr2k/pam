@@ -1,0 +1,50 @@
+{% extends 'pam/help/base_help.html' %}
+
+{% block help_content %}
+<h4><i class="bi bi-shield-lock-fill"></i> Getting Started</h4>
+<hr>
+
+<p>PAM (Privileged Access Manager) gives you <strong>temporary, just-in-time</strong>
+access to privileged cloud roles and vault secrets — instead of permanent credentials.
+Access is requested, approved, granted for a limited time, and automatically removed
+when it expires. Everything you do is audited.</p>
+
+<h6 class="mt-4">Signing in</h6>
+<p>You sign in with your organization's Microsoft Entra ID (SSO) account — no separate
+password. Your first login creates your PAM account automatically.</p>
+
+<h6 class="mt-4">Key concepts</h6>
+<dl>
+    <dt>Role</dt>
+    <dd>A bundle of access — an AWS permission set, an Entra ID directory role, or a
+        vault secret checkout. You request a <em>role</em>, not raw permissions.</dd>
+    <dt>Request</dt>
+    <dd>Your ask for a role, with a justification and a duration. It follows the
+        lifecycle: <span class="badge badge-status-pending">PENDING</span> →
+        <span class="badge badge-status-approved">APPROVED</span> →
+        <span class="badge badge-status-provisioning">PROVISIONING</span> →
+        <span class="badge badge-status-provisioned">PROVISIONED</span> → expired.</dd>
+    <dt>Just-in-Time (JIT)</dt>
+    <dd>Access exists only while you need it. When the timer runs out (or you revoke
+        it), it is removed from the cloud provider automatically.</dd>
+    <dt>Checkout</dt>
+    <dd>The vault version of a request: temporary permission to view one secret.</dd>
+</dl>
+
+<h6 class="mt-4">Finding your way around</h6>
+<table class="table table-sm">
+    <thead><tr><th>Page</th><th>What it's for</th></tr></thead>
+    <tbody>
+        <tr><td><strong>Dashboard</strong></td><td>Your active sessions, recent requests, and items waiting for you</td></tr>
+        <tr><td><strong>New Request</strong></td><td>Request a privileged role or vault checkout</td></tr>
+        <tr><td><strong>My Requests</strong></td><td>Track your requests; revoke active access early</td></tr>
+        <tr><td><strong>Roles</strong></td><td>Browse what you can request (including vault checkouts)</td></tr>
+        <tr><td><strong>Approvals</strong></td><td>Requests waiting for <em>your</em> approval</td></tr>
+        <tr><td><strong>Vault</strong> <span class="badge bg-secondary">staff</span></td><td>Manage vault entries (staff only)</td></tr>
+        <tr><td><strong>Sessions</strong> <span class="badge bg-secondary">admin</span></td><td>All active sessions; admins can revoke any of them</td></tr>
+        <tr><td><strong>Break Glass</strong> <span class="badge bg-danger">admin</span></td><td>Emergency access, no approval — for outages</td></tr>
+        <tr><td><strong>Audit Log</strong> <span class="badge bg-secondary">auditor</span></td><td>Immutable record of every action</td></tr>
+        <tr><td><strong>Reviews</strong></td><td>Recertification campaigns ("still need this?")</td></tr>
+    </tbody>
+</table>
+{% endblock %}

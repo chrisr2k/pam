@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.core.management import call_command
 
 from .provisioning import provision_access_sync, deprovision_access_sync
+from audit.models import AuditLog
 from roles.models import PrivilegedRole
 from access_requests.models import AccessRequest
 
@@ -232,3 +233,87 @@ class CheckExpiredCommandTests(TestCase):
         )
         call_command('check_expired')
         self.assertEqual(mock_deprovision.call_count, 0)
+
+
+class ProvisioningAuditEmissionTests(TestCase):
+    """Test audit emissions from provisioning/deprovisioning tasks."""
+
+    def setUp(self):
+        self.requester = User.objects.create_user(
+            username='requester',
+            email='requester@example.com',
+            entra_object_id='oid-requester',
+        )
+        self.role = PrivilegedRole.objects.create(
+            name='Test-Role',
+            provider='AWS',
+            aws_permission_set_arn='ps-123',
+            aws_account_id='123456789012',
+        )
+        self.access_request = AccessRequest.objects.create(
+            requester=self.requester,
+            role=self.role,
+            justification='Test',
+        )
+
+    @patch('providers.aws_identity_center.AWSIdentityCenterProvider')
+    def test_provision_success_emits_audit(self, mock_provider_cls):
+        """Successful provisioning emits STARTED + SUCCEEDED audit rows."""
+        mock_provider = MagicMock()
+        mock_provider_cls.return_value = mock_provider
+        mock_provider.provision_access.return_value = {
+            'success': True,
+            'reference_id': 'ref-123',
+        }
+        self.access_request.approve(self.requester)
+        provision_access_sync(self.access_request.pk)
+        self.assertTrue(AuditLog.objects.filter(action='PROVISIONING_STARTED').exists())
+        self.assertTrue(AuditLog.objects.filter(action='PROVISIONING_SUCCEEDED').exists())
+
+    @patch('providers.aws_identity_center.AWSIdentityCenterProvider')
+    def test_provision_failure_emits_audit(self, mock_provider_cls):
+        """Failed provisioning emits STARTED + FAILED (with error details)."""
+        mock_provider = MagicMock()
+        mock_provider_cls.return_value = mock_provider
+        mock_provider.provision_access.return_value = {
+            'success': False,
+            'error': 'API Error',
+        }
+        self.access_request.approve(self.requester)
+        provision_access_sync(self.access_request.pk)
+        self.assertTrue(AuditLog.objects.filter(action='PROVISIONING_STARTED').exists())
+        failed = AuditLog.objects.filter(action='PROVISIONING_FAILED').first()
+        self.assertIsNotNone(failed)
+        self.assertEqual(failed.details['error'], 'API Error')
+
+    @patch('providers.aws_identity_center.AWSIdentityCenterProvider')
+    def test_deprovision_emits_access_expired(self, mock_provider_cls):
+        """Expiry-driven deprovision emits ACCESS_EXPIRED."""
+        self.access_request.status = AccessRequest.Status.PROVISIONED
+        self.access_request.provisioned_at = timezone.now()
+        self.access_request.expires_at = timezone.now() + timedelta(hours=2)
+        self.access_request.provider_reference_id = 'ref-123'
+        self.access_request.save()
+        mock_provider = MagicMock()
+        mock_provider_cls.return_value = mock_provider
+        mock_provider.deprovision_access.return_value = True
+
+        deprovision_access_sync(self.access_request.pk)
+        audit = AuditLog.objects.filter(action='ACCESS_EXPIRED').first()
+        self.assertIsNotNone(audit)
+        self.assertEqual(audit.details['trigger'], 'expired')
+
+    @patch('providers.aws_identity_center.AWSIdentityCenterProvider')
+    def test_revoked_deprovision_emits_no_access_expired(self, mock_provider_cls):
+        """Revoke-triggered deprovision does NOT emit ACCESS_EXPIRED."""
+        self.access_request.status = AccessRequest.Status.PROVISIONED
+        self.access_request.provisioned_at = timezone.now()
+        self.access_request.expires_at = timezone.now() + timedelta(hours=2)
+        self.access_request.provider_reference_id = 'ref-123'
+        self.access_request.save()
+        mock_provider = MagicMock()
+        mock_provider_cls.return_value = mock_provider
+        mock_provider.deprovision_access.return_value = True
+
+        deprovision_access_sync(self.access_request.pk, trigger='revoked')
+        self.assertFalse(AuditLog.objects.filter(action='ACCESS_EXPIRED').exists())

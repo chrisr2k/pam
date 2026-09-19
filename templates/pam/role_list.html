@@ -12,7 +12,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h5 class="card-title mb-0">{{ role.name }}</h5>
-                    <span class="badge bg-{% if role.provider == 'AWS' %}warning{% else %}primary{% endif %}">
+                    <span class="badge bg-{% if role.provider == 'AWS' %}warning{% elif role.provider == 'VAULT' %}dark{% else %}primary{% endif %}">
                         {{ role.provider }}
                     </span>
                 </div>

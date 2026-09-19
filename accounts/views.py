@@ -7,16 +7,65 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.core import signing
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
+from django.views.generic import TemplateView
 import msal
+import pyotp
 
+from audit.middleware import log_action
+from .mfa import (
+    consume_mfa_ticket,
+    mfa_clear_failures,
+    mfa_is_locked,
+    mfa_lockout_remaining,
+    mfa_record_failure,
+    normalize_code,
+    verify_totp,
+)
 from .models import EntraConfig, AWSConfig
 
 
 logger = logging.getLogger(__name__)
+
+# Labels for the generic MFA challenge page (specific labels are set by the
+# views that issue the ticket)
+ACTION_LABELS = {
+    'create_request': 'Submit access request',
+    'approve_request': 'Approve access request',
+    'break_glass': 'Break-glass emergency access',
+    'reveal_vault_secret': 'Reveal vault secret',
+}
+
+
+def render_mfa_challenge(request, action_label, target_id, hidden_post):
+    """Render the MFA challenge page for a freshly-issued ticket.
+
+    Form data is re-submitted as hidden inputs (never stashed server-side);
+    the ticket and target_id are passed explicitly.
+    """
+    context = {
+        'action_label': action_label,
+        'ticket': request.session.get('mfa_ticket', ''),
+        'target_id': target_id,
+        'hidden_fields': [
+            (k, v) for k, v in hidden_post.items()
+            if k not in ('code', 'csrfmiddlewaretoken', 'ticket', 'target_id')
+        ],
+        'error': None,
+        'locked': False,
+        'lockout_seconds': 0,
+        'attempts_remaining': max(
+            0,
+            settings.PAM_MFA_MAX_ATTEMPTS - int(request.session.get('mfa_failed_attempts', 0)),
+        ),
+    }
+    return render(request, 'pam/mfa_challenge.html', context)
 
 
 def build_redirect_uri(request, path='/accounts/callback/'):
@@ -129,6 +178,14 @@ class OIDCCallbackView(View):
         user = authenticate(request, code=code)
         if user is not None:
             login(request, user)
+            log_action(
+                actor=user,
+                action='LOGIN',
+                target_type='User',
+                target_id=user.pk,
+                details={'method': 'oidc'},
+                request=request,
+            )
             # Use next URL from session (set before OIDC redirect), validate to prevent open redirect
             next_url = request.session.pop('oidc_next', settings.LOGIN_REDIRECT_URL)
             if not url_has_allowed_host_and_scheme(next_url, allowed_hosts=None):
@@ -149,6 +206,14 @@ class LocalLoginView(View):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
+            log_action(
+                actor=user,
+                action='LOGIN',
+                target_type='User',
+                target_id=user.pk,
+                details={'method': 'local'},
+                request=request,
+            )
             next_url = request.POST.get('next', settings.LOGIN_REDIRECT_URL)
             if not url_has_allowed_host_and_scheme(next_url, allowed_hosts=None):
                 next_url = settings.LOGIN_REDIRECT_URL
@@ -163,8 +228,17 @@ class LogoutView(View):
     """Log out the user and redirect to Entra ID logout or home."""
 
     def get(self, request):
+        user = request.user
         config = EntraConfig.get_config()
         logout(request)
+        if user.is_authenticated:
+            log_action(
+                actor=user,
+                action='LOGOUT',
+                target_type='User',
+                target_id=user.pk,
+                request=request,
+            )
         tenant_id = config.tenant_id or settings.ENTRA_TENANT_ID
         if tenant_id:
             logout_url = (
@@ -267,5 +341,308 @@ class AWSSetupView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.warning(request, 'Configuration saved but is incomplete. Fill in at least one auth method.')
 
         return redirect('accounts:aws_setup')
+
+
+class MFASetupView(LoginRequiredMixin, View):
+    """Enroll (or re-enroll) a TOTP authenticator for elevation-time MFA."""
+
+    def _qr_svg(self, otpauth_uri):
+        """Build an inline SVG QR code (pure-Python, no Pillow)."""
+        import qrcode
+        import qrcode.image.svg
+        img = qrcode.make(
+            otpauth_uri,
+            image_factory=qrcode.image.svg.SvgPathImage,
+            box_size=4,
+            border=2,
+        )
+        svg = img.to_string()
+        if isinstance(svg, bytes):
+            svg = svg.decode('utf-8')
+        return svg
+
+    def get(self, request):
+        user = request.user
+        pending_secret = request.session.get('mfa_pending_secret', '')
+        if not pending_secret:
+            pending_secret = pyotp.random_base32()
+            request.session['mfa_pending_secret'] = pending_secret
+        otpauth_uri = pyotp.TOTP(pending_secret).provisioning_uri(
+            name=user.email or user.username,
+            issuer_name=settings.PAM_MFA_ISSUER,
+        )
+        return render(request, 'pam/mfa_setup.html', {
+            'user': user,
+            'secret': pending_secret,
+            'otpauth_uri': otpauth_uri,
+            'qr_svg': self._qr_svg(otpauth_uri),
+            'required': user.mfa_required,
+        })
+
+    def post(self, request):
+        user = request.user
+        pending_secret = request.session.get('mfa_pending_secret', '')
+        code = normalize_code(request.POST.get('code', ''))
+        if not pending_secret:
+            messages.error(request, 'No pending MFA setup found. Please try again.')
+            return redirect('accounts:mfa_setup')
+        # Verify against the pending secret; a failed attempt keeps it in the
+        # session so the page can be refreshed without generating a new one.
+        if not pyotp.TOTP(pending_secret).verify(code, valid_window=1):
+            messages.error(request, 'Invalid verification code. Please try again.')
+            return redirect('accounts:mfa_setup')
+        was_enrolled = user.mfa_enrolled
+        user.set_otp_secret(pending_secret)
+        user.mfa_enrolled_at = timezone.now()
+        user.save(update_fields=['otp_secret', 'mfa_enrolled_at'])
+        request.session.pop('mfa_pending_secret', None)
+        log_action(
+            actor=user,
+            action='MFA_ENROLLED',
+            target_type='User',
+            target_id=user.pk,
+            details={'re_enroll': was_enrolled},
+            request=request,
+        )
+        if was_enrolled:
+            messages.success(request, 'MFA secret replaced successfully.')
+        else:
+            messages.success(request, 'MFA enrolled successfully.')
+        return redirect('accounts:profile')
+
+
+class MFARemoveView(LoginRequiredMixin, View):
+    """Remove MFA enrollment (blocked for roles that require MFA)."""
+
+    def post(self, request):
+        user = request.user
+        if user.mfa_required:
+            messages.error(request, 'MFA is required for your role and cannot be removed.')
+            return redirect('accounts:profile')
+        if not user.mfa_enrolled:
+            messages.warning(request, 'MFA is not enrolled.')
+            return redirect('accounts:profile')
+        code = request.POST.get('code', '').strip()
+        if not verify_totp(user, code):
+            messages.error(request, 'Invalid verification code.')
+            return redirect('accounts:profile')
+        user.set_otp_secret('')
+        user.mfa_enrolled_at = None
+        user.save(update_fields=['otp_secret', 'mfa_enrolled_at'])
+        log_action(
+            actor=user,
+            action='MFA_REMOVED',
+            target_type='User',
+            target_id=user.pk,
+            request=request,
+        )
+        messages.success(request, 'MFA removed.')
+        return redirect('accounts:profile')
+
+
+class MFAChallengeView(LoginRequiredMixin, View):
+    """Verify a TOTP code for a ticketed action (submit/approve/break-glass)."""
+
+    def _decode_session_ticket(self, request):
+        """Best-effort decode of the session ticket for display context."""
+        ticket = request.session.get('mfa_ticket', '')
+        if not ticket:
+            return None
+        try:
+            return signing.loads(ticket, salt='pam.mfa_ticket', max_age=settings.PAM_MFA_TICKET_TTL)
+        except (signing.SignatureExpired, signing.BadSignature):
+            return None
+
+    def _challenge_context(self, request, payload, hidden_post, error=None):
+        action = payload.get('action', '') if payload else ''
+        return {
+            'action_label': ACTION_LABELS.get(action, 'Verify your identity'),
+            'ticket': request.session.get('mfa_ticket', ''),
+            'target_id': (payload or {}).get('target_id', ''),
+            'hidden_fields': [
+                (k, v) for k, v in hidden_post.items()
+                if k not in ('code', 'csrfmiddlewaretoken', 'ticket', 'target_id')
+            ],
+            'error': error,
+            'locked': mfa_is_locked(request),
+            'lockout_seconds': mfa_lockout_remaining(request),
+            'attempts_remaining': max(
+                0,
+                settings.PAM_MFA_MAX_ATTEMPTS - int(request.session.get('mfa_failed_attempts', 0)),
+            ),
+        }
+
+    def _render_error(self, request, payload, hidden_post, error):
+        return render(request, 'pam/mfa_challenge.html',
+                      self._challenge_context(request, payload, hidden_post, error=error))
+
+    def get(self, request):
+        # Direct navigation / refresh: the ticket survives in the session but
+        # action-specific form data does not. Approve can still be completed
+        # (comment is optional); other actions will fail re-validation on POST.
+        payload = self._decode_session_ticket(request)
+        if payload is None or payload.get('user_id') != str(request.user.pk):
+            messages.error(request, 'No pending action to verify.')
+            return redirect('requests:dashboard')
+        context = self._challenge_context(request, payload, {})
+        context['refreshed'] = True
+        return render(request, 'pam/mfa_challenge.html', context)
+
+    def post(self, request):
+        code = request.POST.get('code', '').strip()
+        ticket_submitted = request.POST.get('ticket', '')
+        target_id = request.POST.get('target_id', '')
+        hidden_post = request.POST
+        payload = self._decode_session_ticket(request)
+
+        if mfa_is_locked(request):
+            return self._render_error(
+                request, payload, hidden_post,
+                'Too many failed attempts. Please wait before retrying.',
+            )
+
+        payload, error = consume_mfa_ticket(request, ticket_submitted, target_id)
+        if error:
+            # Make pre-verification failures observable (they previously left
+            # no trace in the audit trail)
+            log_action(
+                actor=request.user,
+                action='MFA_CHALLENGE_FAILED',
+                target_type='User',
+                target_id=request.user.pk,
+                details={
+                    'action': payload.get('action') if payload else 'unknown',
+                    'reason': error,
+                },
+                request=request,
+            )
+            return self._render_error(request, payload, hidden_post, error)
+
+        if not verify_totp(request.user, code):
+            locked = mfa_record_failure(request)
+            log_action(
+                actor=request.user,
+                action='MFA_CHALLENGE_FAILED',
+                target_type='User',
+                target_id=request.user.pk,
+                details={'action': payload['action'], 'locked': locked},
+                request=request,
+            )
+            error = (
+                f'Too many failed attempts. MFA challenge locked for '
+                f'{settings.PAM_MFA_LOCKOUT_MINUTES} minutes.'
+                if locked else 'Invalid verification code.'
+            )
+            return self._render_error(request, payload, hidden_post, error)
+
+        # Success: the ticket is single-use, reset counters, rotate the
+        # session key to prevent fixation. Session rotation is a hardening
+        # nicety — if it fails, log it and continue rather than failing the
+        # user's approved action.
+        request.session.pop('mfa_ticket', None)
+        mfa_clear_failures(request)
+        try:
+            request.session.cycle_key()
+        except Exception:
+            logger.exception('Session cycle failed after MFA challenge (continuing)')
+
+        from access_requests import services as ar_services
+        action = payload['action']
+        if action == 'approve_request':
+            ok, err, outcome = ar_services.execute_approve(
+                request.user, target_id,
+                comment=request.POST.get('comment', ''),
+                request=request)
+            if not ok:
+                return self._render_error(request, payload, hidden_post, err)
+            if outcome == 'vote_recorded':
+                messages.success(
+                    request,
+                    'Your approval has been recorded. Additional approvals are '
+                    'needed before access is granted.',
+                )
+            elif outcome == 'duplicate_vote':
+                messages.info(request, 'You have already approved this request.')
+            else:
+                messages.success(request, f'Request #{target_id} approved.')
+            return redirect('requests:detail', pk=target_id)
+        if action == 'create_request':
+            access_request, form = ar_services.execute_create(
+                request.user, request.POST, request=request)
+            if access_request is None:
+                err = ('Request data was lost or invalid. '
+                       'Please submit the request again from the request form.')
+                if form is not None and form.errors:
+                    err = 'Invalid request data: ' + '; '.join(
+                        f'{field}: {", ".join(msgs)}' for field, msgs in form.errors.items())
+                return self._render_error(request, payload, hidden_post, err)
+            if ar_services.duration_was_clamped(request.POST, access_request):
+                messages.warning(
+                    request,
+                    f'Requested duration exceeds the '
+                    f'{access_request.role.max_duration_minutes}-minute maximum '
+                    f'for this role and was reduced.',
+                )
+            if access_request.status == access_request.Status.APPROVED:
+                messages.success(
+                    request,
+                    'Access granted automatically — this role does not require approval.',
+                )
+            else:
+                messages.success(request, 'Access request submitted successfully.')
+            return redirect('requests:detail', pk=access_request.pk)
+        if action == 'break_glass':
+            access_request, err = ar_services.execute_break_glass(
+                request.user, target_id,
+                justification=request.POST.get('justification', ''),
+                duration_minutes=request.POST.get('duration_minutes', ''))
+            if access_request is None:
+                return self._render_error(request, payload, hidden_post, err)
+            return redirect('requests:detail', pk=access_request.pk)
+        if action == 'reveal_vault_secret':
+            from vault import services as vault_services
+            secret, err = vault_services.execute_reveal(
+                request.user, int(target_id), request=request)
+            if err:
+                return self._render_error(request, payload, hidden_post, err)
+            messages.success(
+                request,
+                f'Secret revealed: {secret} — copy it now; it is shown only once.',
+            )
+            return redirect('vault:detail', pk=int(target_id))
+
+        messages.error(request, 'Unknown challenge action.')
+        return redirect('requests:dashboard')
+
+
+class HelpView(LoginRequiredMixin, TemplateView):
+    """In-app user guide pages."""
+
+    HELP_SECTIONS = {
+        'overview': 'pam/help/overview.html',
+        'requests': 'pam/help/requests.html',
+        'mfa': 'pam/help/mfa.html',
+        'vault': 'pam/help/vault.html',
+        'admin': 'pam/help/admin.html',
+    }
+    template_name = 'pam/help/overview.html'
+
+    def get_template_names(self):
+        section = self.kwargs.get('section', 'overview')
+        if section not in self.HELP_SECTIONS:
+            raise Http404('Unknown help section')
+        return [self.HELP_SECTIONS[section]]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['sections'] = [
+            ('overview', 'Getting Started'),
+            ('requests', 'Requests & Approvals'),
+            ('mfa', 'Multi-Factor Auth'),
+            ('vault', 'The Vault'),
+            ('admin', 'For Administrators'),
+        ]
+        context['active_section'] = self.kwargs.get('section', 'overview')
+        return context
 
 

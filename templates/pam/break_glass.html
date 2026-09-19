@@ -1,0 +1,66 @@
+{% extends 'pam/base.html' %}
+
+{% block title %}Break Glass - PAM{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-octagon-fill"></i>
+            <strong>Break-glass access</strong> grants immediate privileged access without
+            approval, for a short fixed duration. Every administrator is alerted, and the
+            action is fully audited. Only use this in a genuine emergency.
+        </div>
+
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-fire"></i> Break Glass Emergency Access
+            </div>
+            <div class="card-body">
+                {% if not roles %}
+                <div class="alert alert-warning">
+                    No break-glass roles have been designated. Ask a superuser to flag a
+                    role as <code>is_break_glass</code> in the Django admin.
+                </div>
+                {% else %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Emergency role</label>
+                        <select name="role" id="role" class="form-select" required>
+                            {% for role in roles %}
+                            <option value="{{ role.pk }}">
+                                {{ role.name }} ({{ role.get_provider_display }})
+                                — max {{ role.max_duration_minutes }} min
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="justification" class="form-label">Emergency justification</label>
+                        <textarea name="justification" id="justification" class="form-control" rows="3"
+                                  placeholder="What incident requires this access?" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="duration_minutes" class="form-label">Duration (minutes)</label>
+                        <input type="number" name="duration_minutes" id="duration_minutes"
+                               class="form-control" min="1" value="{{ default_duration }}" required>
+                        <div class="form-text">
+                            Effective duration is capped at
+                            min(role maximum, {{ default_duration }} minutes).
+                        </div>
+                    </div>
+                    <p class="text-muted">
+                        <i class="bi bi-shield-lock-fill"></i>
+                        You will be asked to verify your identity with your authenticator app.
+                    </p>
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="bi bi-fire"></i> Trigger Break Glass
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

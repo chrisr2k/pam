@@ -1,0 +1,51 @@
+{% extends 'pam/help/base_help.html' %}
+
+{% block help_content %}
+<h4><i class="bi bi-shield-lock"></i> Multi-Factor Authentication</h4>
+<hr>
+
+<p>PAM protects <strong>elevation</strong> with time-based one-time passwords (TOTP) —
+the 6-digit codes from an authenticator app. It is not your login password; it proves
+it's really you at the moment you take a privileged action.</p>
+
+<h6 class="mt-3">Do I need it?</h6>
+<ul>
+    <li><strong>Approvers, admins, and staff: yes</strong> — you must enroll before
+        approving or using break-glass. The app will send you to MFA Setup the first
+        time.</li>
+    <li>Anyone listed as an approver of a role is also required to enroll.</li>
+    <li>Everyone else: optional. If enrolled, your own submissions and vault reveals
+        will also ask for a code.</li>
+</ul>
+
+<h6 class="mt-4">Setting it up (one time, ~1 minute)</h6>
+<ol>
+    <li>Open the user menu (top right) → <strong>MFA Setup</strong>.</li>
+    <li>Scan the QR code with Microsoft Authenticator, Google Authenticator, 1Password,
+        or any TOTP app — or type the secret manually.</li>
+    <li>Enter the 6-digit code from the app and click <strong>Activate MFA</strong>.
+        Codes with spaces ("123 456") are accepted.</li>
+</ol>
+
+<h6 class="mt-4">When will I be asked for a code?</h6>
+<ul>
+    <li>Submitting a request (if enrolled)</li>
+    <li>Approving a request</li>
+    <li>Revealing a vault secret (if enrolled)</li>
+    <li>Break-glass (always)</li>
+</ul>
+<p>Denying or revoking never asks for a code — those are safe actions.</p>
+
+<h6 class="mt-4">Troubleshooting</h6>
+<ul>
+    <li><strong>"Invalid verification code":</strong> the code rotates every 30 seconds —
+        use the current one; make sure your phone's clock is set to automatic time.</li>
+    <li><strong>Locked out:</strong> 5 wrong codes lock you out for 15 minutes.
+        Signing out and back in resets the lockout.</li>
+    <li><strong>Stale/expired challenge:</strong> challenges last 10 minutes and are
+        single-use. Go back to the action and start again.</li>
+    <li><strong>New phone / lost authenticator:</strong> you cannot re-enroll without
+        a code from the old device. Ask an administrator to clear your MFA enrollment,
+        then set it up again.</li>
+</ul>
+{% endblock %}

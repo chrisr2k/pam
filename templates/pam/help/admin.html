@@ -1,0 +1,113 @@
+{% extends 'pam/help/base_help.html' %}
+
+{% block help_content %}
+<h4><i class="bi bi-gear"></i> For Administrators</h4>
+<hr>
+
+<p>This section covers staff and admin duties. Everything here lives in the user menu
+(top right) or the Django admin at <code>/pam-admin/</code>.</p>
+
+<h6 class="mt-3">Roles &amp; approvers <span class="badge bg-secondary">admin</span></h6>
+<ul>
+    <li>Create and edit roles under <strong>Django admin → Roles → Privileged roles</strong>.</li>
+    <li>Assign approvers per role, and set the approval policy:
+        <strong>Any one</strong> / <strong>All approvers</strong> / <strong>Fixed quorum</strong>
+        (quorum is capped at the approver count so requests can never get stuck).</li>
+    <li>Anyone you add as a role approver can approve for that role — and becomes
+        MFA-required automatically.</li>
+    <li>Roles with <em>Requires approval</em> off grant immediately on request.</li>
+    <li>Flag emergency roles as <em>Break glass</em> — they appear on the admin
+        Break Glass page (no approval, MFA mandatory, all admins alerted).</li>
+</ul>
+
+<h6 class="mt-4">Vault entries <span class="badge bg-secondary">staff</span></h6>
+<ul>
+    <li>Create entries under <strong>Vault</strong> (navbar). The secret is encrypted
+        at rest and never displayed again.</li>
+    <li>Each entry auto-creates a role <code>Vault: &lt;name&gt;</code> — assign its
+        approvers in the Django admin, not on the entry.</li>
+    <li>Manual rotation is available on the entry page; previously used values are
+        rejected. <em>Auto-rotate</em> entries rotate whenever a checkout ends.</li>
+    <li><strong>Rotation plugins</strong> sync the new credential to the real system:
+        AWS IAM access keys (<code>iam_user_name</code>), Entra app client secrets
+        (<code>tenant_id</code>, <code>client_id</code>; the app needs
+        <code>Application.ReadWrite.OwnedBy</code>), SSH (<code>host</code>,
+        <code>username</code>), PostgreSQL / MySQL (<code>host</code>,
+        <code>username</code>; MySQL 8+), Windows WinRM (<code>host</code>,
+        <code>username</code>; local admin or AD reset rights), and Generic HTTP
+        (<code>url</code> + templates). Config holds connection info only — never
+        secrets. Failed rotations keep the existing value and record a failed
+        history entry.</li>
+    <li>Deleting an entry deactivates its role but keeps history; prefer deactivating
+        while checkouts are active.</li>
+</ul>
+
+<h6 class="mt-4">MFA administration</h6>
+<ul>
+    <li>Users locked out of MFA (lost phone) can be reset: clear their
+        <code>otp_secret</code> / <code>mfa_enrolled_at</code> in the Django admin
+        user page, then they re-enroll at MFA Setup.</li>
+</ul>
+
+<h6 class="mt-4">SIEM export <span class="badge bg-secondary">staff</span></h6>
+<ul>
+    <li><strong>SIEM Settings</strong>: webhook URL (Splunk HEC / Sentinel / generic),
+        payload mode, API token, optional action filter.</li>
+    <li>Events forward in order within ~45 seconds, at least once; failures surface
+        as <em>last error</em> on the same page and retry automatically.</li>
+</ul>
+
+<h6 class="mt-4">Notifications &amp; reviews</h6>
+<ul>
+    <li><strong>Notification Settings</strong>: email (SMTP), Slack, Teams, with
+        per-event toggles — including the break-glass alarm (default on, alerts all
+        admins).</li>
+    <li><strong>Reviews</strong>: create recertification campaigns, assign reviewers,
+        track decisions.</li>
+</ul>
+
+<h6 class="mt-4">Threat analytics <span class="badge bg-secondary">staff</span></h6>
+<ul>
+    <li><strong>Alerts</strong> (navbar): every rule firing, with severity, details, and
+        an Acknowledge button.</li>
+    <li><strong>Threat Settings</strong>: enable/disable each rule and tune its
+        thresholds — impossible travel (logins from multiple IP networks), off-hours
+        elevation, MFA storms, checkout spikes, and vault reveal spikes.</li>
+    <li>The scan runs every 60 seconds. Each alert also lands in the audit log (and
+        your SIEM) and can notify all admins by email/Slack/Teams. Duplicate alerts
+        for the same subject are suppressed during the cooldown window.</li>
+    <li>Off-hours boundaries are evaluated in the server timezone (UTC).</li>
+</ul>
+
+<h6 class="mt-4">Access review campaigns <span class="badge bg-secondary">staff</span></h6>
+<ul>
+    <li><strong>New Review</strong>: creates a campaign from grant history — one entry per
+        user/role pair that has ever held access (break-glass excluded). The optional
+        <em>unused access</em> filter mines for entitlements whose most recent grant is
+        older than N days.</li>
+    <li>Assigned reviewers decide each entry (Approve = keep / Revoke = remove) with a
+        comment; per-entry usage stats show how much the access was actually used. When
+        the last entry is decided, the review completes automatically.</li>
+</ul>
+
+<h6 class="mt-4">SCIM / Entra user provisioning <span class="badge bg-secondary">staff</span></h6>
+<ul>
+    <li><strong>SCIM Settings</strong>: enable the endpoint, copy the tenant URL
+        (<code>/scim/v2/</code>) and generate a secret token
+        (<code>openssl rand -hex 32</code>).</li>
+    <li>In Entra: Enterprise applications → new (non-gallery) → Provisioning →
+        <em>Automatic</em> → Tenant URL + Secret Token → Test connection → set attribute
+        mappings (userPrincipalName → userName, mail → email, accountEnabled → active) →
+        <strong>leave group provisioning disabled</strong>.</li>
+    <li>Provisioning creates and updates users; deprovisioning <strong>deactivates</strong>
+        the account (never deletes — audit history is preserved). PAM roles default to
+        Requester; assign approver/admin roles in the Django admin.</li>
+</ul>
+
+<div class="alert alert-danger mt-4">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <strong>Never rotate <code>SECRET_KEY</code> without exporting vault secrets
+    first.</strong> It is the encryption key for every stored vault value and the
+    signing key for configuration secrets — rotating it destroys them permanently.
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends 'pam/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Add Vault Entry - PAM{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Crispy wraps each field in a .mb-3 div; hidden until a plugin is picked */
+    [data-plugin] { }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-safe2"></i> Add Vault Entry
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill"></i>
+                    The secret is encrypted at rest. A role named
+                    <code>Vault: &lt;entry name&gt;</code> is created automatically —
+                    assign approvers to it in the Django admin to control checkout.
+                    For rotation plugins, the secret value you enter is the
+                    <strong>current live credential</strong> — rotation will replace
+                    it in the target system, and the plugin's connection fields
+                    appear below once you pick it.
+                </div>
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Create Entry
+                    </button>
+                    <a href="{% url 'vault:list' %}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        function togglePluginFields() {
+            var select = document.getElementById('id_rotation_plugin');
+            var plugin = select ? select.value : '';
+            document.querySelectorAll('[data-plugin]').forEach(function (el) {
+                var plugins = el.getAttribute('data-plugin').split(' ');
+                var wrapper = el.closest('.mb-3') || el.closest('.form-group') || el.parentElement;
+                if (wrapper) {
+                    wrapper.style.display = plugins.indexOf(plugin) !== -1 ? '' : 'none';
+                }
+            });
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            togglePluginFields();
+            var select = document.getElementById('id_rotation_plugin');
+            if (select) select.addEventListener('change', togglePluginFields);
+        });
+    })();
+</script>
+{% endblock %}
